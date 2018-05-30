@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	pluginReg = map[string]Plugin{}
+	pluginReg   = map[string]Plugin{}
 	pluginRegMu sync.Mutex
 )
 

@@ -26,6 +26,7 @@ import (
 )
 
 const protocVersionEmu = "goprotoc 3.5.1"
+
 var gitSha = "" // can be replaced by -X linker flag
 
 var (
