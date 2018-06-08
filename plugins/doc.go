@@ -31,12 +31,6 @@
 // This makes it easy to generate code that references these types
 // and/or augments these types.
 //
-// The other key types in this package are TypeName and Imports. TypeName
-// is a simple representation of a type that can be interpolated into
-// generated code. Several GoNames functions provide types in the form of
-// a TypeName. And Imports is a means of accumulating package imports and
-// determining import aliases, where necessary.
-//
 // Go Plugins
 //
 // Finally, there are methods in this package to allow a protoc plugin be

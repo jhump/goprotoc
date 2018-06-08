@@ -10,6 +10,7 @@ import (
 
 	dpb "github.com/golang/protobuf/protoc-gen-go/descriptor"
 	"github.com/golang/protobuf/protoc-gen-go/generator"
+	"github.com/jhump/gopoet"
 	"github.com/jhump/protoreflect/desc"
 )
 
@@ -18,14 +19,14 @@ import (
 //
 // GoNames is not thread-safe.
 type GoNames struct {
-	// cache of descriptor to *TypeName
-	descTypes map[typeKey]*TypeName
+	// cache of descriptor to TypeName
+	descTypes map[typeKey]gopoet.TypeName
 	// cache of descriptor to names
 	descNames map[nameKey]string
 	// cache of extension field descriptors to symbol representing generated var
-	extSymbols map[*desc.FieldDescriptor]*Symbol
+	extSymbols map[*desc.FieldDescriptor]*gopoet.Symbol
 	// cache of file descriptor to Package
-	pkgNames map[*desc.FileDescriptor]Package
+	pkgNames map[*desc.FileDescriptor]gopoet.Package
 }
 
 type typeKeyKind int
@@ -92,7 +93,7 @@ func (n *GoNames) OutputFilenameFor(fd *desc.FileDescriptor, suffix string) stri
 }
 
 // GoPackageForFile returns the Go package for the given file descriptor.
-func (n *GoNames) GoPackageForFile(fd *desc.FileDescriptor) Package {
+func (n *GoNames) GoPackageForFile(fd *desc.FileDescriptor) gopoet.Package {
 	if pkg, ok := n.pkgNames[fd]; ok {
 		return pkg
 	}
@@ -128,9 +129,9 @@ func (n *GoNames) GoPackageForFile(fd *desc.FileDescriptor) Package {
 		}
 	}
 
-	pkg := Package{ImportPath: pkgPath, Name: pkgName}
+	pkg := gopoet.Package{ImportPath: pkgPath, Name: pkgName}
 	if n.pkgNames == nil {
-		n.pkgNames = map[*desc.FileDescriptor]Package{}
+		n.pkgNames = map[*desc.FileDescriptor]gopoet.Package{}
 	}
 	n.pkgNames[fd] = pkg
 	return pkg
@@ -155,22 +156,22 @@ func sanitize(name string) string {
 }
 
 // GoTypeForMessage returns the Go type for the given message descriptor.
-func (n *GoNames) GoTypeForMessage(md *desc.MessageDescriptor) *TypeName {
+func (n *GoNames) GoTypeForMessage(md *desc.MessageDescriptor) gopoet.TypeName {
 	return n.goTypeFor(md)
 }
 
 // GoTypeForEnum returns the Go type for the given enum descriptor.
-func (n *GoNames) GoTypeForEnum(ed *desc.EnumDescriptor) *TypeName {
+func (n *GoNames) GoTypeForEnum(ed *desc.EnumDescriptor) gopoet.TypeName {
 	return n.goTypeFor(ed)
 }
 
-func (n *GoNames) goTypeFor(d desc.Descriptor) *TypeName {
-	return n.getOrComputeAndStoreType(typeKey{d: d, k: typeKeyDefault}, func() *TypeName {
-		return namedType(n.goSymbolFor(d))
+func (n *GoNames) goTypeFor(d desc.Descriptor) gopoet.TypeName {
+	return n.getOrComputeAndStoreType(typeKey{d: d, k: typeKeyDefault}, func() gopoet.TypeName {
+		return gopoet.NamedType(n.goSymbolFor(d))
 	})
 }
 
-func (n *GoNames) goSymbolFor(d desc.Descriptor) *Symbol {
+func (n *GoNames) goSymbolFor(d desc.Descriptor) *gopoet.Symbol {
 	l := 0
 	for parent := d; !isFile(parent); parent = parent.GetParent() {
 		l++
@@ -180,7 +181,7 @@ func (n *GoNames) goSymbolFor(d desc.Descriptor) *Symbol {
 		l--
 		s[l] = parent.GetName()
 	}
-	return &Symbol{
+	return &gopoet.Symbol{
 		Package: n.GoPackageForFile(d.GetFile()),
 		Name:    generator.CamelCaseSlice(s),
 	}
@@ -208,7 +209,7 @@ func (n *GoNames) GoTypeForOneof(ood *desc.OneOfDescriptor) string {
 // GoTypeForOneofChoice returns the single-field struct type that contains the
 // given oneof choice. The returned type implements the oneof interface type
 // named by GoTypeForOneof.
-func (n *GoNames) GoTypeForOneofChoice(fld *desc.FieldDescriptor) *TypeName {
+func (n *GoNames) GoTypeForOneofChoice(fld *desc.FieldDescriptor) gopoet.TypeName {
 	if fld.GetOneOf() == nil {
 		panic(fmt.Sprintf("field %s is not part of a oneof", fld.GetFullyQualifiedName()))
 	}
@@ -238,7 +239,7 @@ func (n *GoNames) GoNameOfOneOf(ood *desc.OneOfDescriptor) string {
 
 // GoNameOfExtensionDesc returns the name of the *proto.ExtensionDesc var that
 // represents the given extension field descriptor.
-func (n *GoNames) GoNameOfExtensionDesc(fld *desc.FieldDescriptor) *Symbol {
+func (n *GoNames) GoNameOfExtensionDesc(fld *desc.FieldDescriptor) *gopoet.Symbol {
 	if !fld.IsExtension() {
 		panic(fmt.Sprintf("field %s is not an extension", fld.GetFullyQualifiedName()))
 	}
@@ -250,7 +251,7 @@ func (n *GoNames) GoNameOfExtensionDesc(fld *desc.FieldDescriptor) *Symbol {
 	sym := n.goSymbolFor(fld)
 	sym.Name = "E_" + sym.Name
 	if n.extSymbols == nil {
-		n.extSymbols = map[*desc.FieldDescriptor]*Symbol{}
+		n.extSymbols = map[*desc.FieldDescriptor]*gopoet.Symbol{}
 	}
 	n.extSymbols[fld] = sym
 	return sym
@@ -259,75 +260,77 @@ func (n *GoNames) GoNameOfExtensionDesc(fld *desc.FieldDescriptor) *Symbol {
 // GoTypeOfField returns the Go type of the given field descriptor. This will
 // be the type of the generated field. If fld is an extension, it is the type
 // of allowed values for the extension.
-func (n *GoNames) GoTypeOfField(fld *desc.FieldDescriptor) *TypeName {
+func (n *GoNames) GoTypeOfField(fld *desc.FieldDescriptor) gopoet.TypeName {
 	return n.getOrComputeType(typeKey{d: fld, k: typeKeyDefault}, func() {
 		n.computeTypeOfFieldLocked(fld)
 	})
 }
 
-func (n *GoNames) GoTypeOfFieldAccessor(fld *desc.FieldDescriptor) *TypeName {
+func (n *GoNames) GoTypeOfFieldAccessor(fld *desc.FieldDescriptor) gopoet.TypeName {
 	return n.getOrComputeType(typeKey{d: fld, k: typeKeyAccessor}, func() {
 		n.computeTypeOfFieldLocked(fld)
 	})
 }
 
+var bytesType = gopoet.SliceType(gopoet.ByteType)
+
 func (n *GoNames) computeTypeOfFieldLocked(fld *desc.FieldDescriptor) {
 	if fld.IsMap() {
 		kt := n.GoTypeOfField(fld.GetMapKeyType())
 		vt := n.GoTypeOfField(fld.GetMapValueType())
-		if kt.Kind() == KindPtr && kt.Elem().Kind() == KindBasic {
+		if kt.Kind() == gopoet.KindPtr && kt.Elem().Kind() == gopoet.KindBasic {
 			kt = kt.Elem()
 		}
-		if vt.Kind() == KindPtr && vt.Elem().Kind() == KindBasic {
+		if vt.Kind() == gopoet.KindPtr && vt.Elem().Kind() == gopoet.KindBasic {
 			vt = vt.Elem()
 		}
-		t := mapType(kt, vt)
+		t := gopoet.MapType(kt, vt)
 		n.descTypes[typeKey{d: fld, k: typeKeyDefault}] = t
 		n.descTypes[typeKey{d: fld, k: typeKeyAccessor}] = t
 		return
 	}
 
-	var t *TypeName
+	var t gopoet.TypeName
 	switch fld.GetType() {
 	case dpb.FieldDescriptorProto_TYPE_BOOL:
-		t = typeBool
+		t = gopoet.BoolType
 	case dpb.FieldDescriptorProto_TYPE_STRING:
-		t = typeString
+		t = gopoet.StringType
 	case dpb.FieldDescriptorProto_TYPE_BYTES:
-		t = typeBytes
+		t = bytesType
 	case dpb.FieldDescriptorProto_TYPE_INT32,
 		dpb.FieldDescriptorProto_TYPE_SINT32,
 		dpb.FieldDescriptorProto_TYPE_SFIXED32:
-		t = typeInt32
+		t = gopoet.Int32Type
 	case dpb.FieldDescriptorProto_TYPE_INT64,
 		dpb.FieldDescriptorProto_TYPE_SINT64,
 		dpb.FieldDescriptorProto_TYPE_SFIXED64:
-		t = typeInt64
+		t = gopoet.Int64Type
 	case dpb.FieldDescriptorProto_TYPE_UINT32,
 		dpb.FieldDescriptorProto_TYPE_FIXED32:
-		t = typeUint32
+		t = gopoet.Uint32Type
 	case dpb.FieldDescriptorProto_TYPE_UINT64,
 		dpb.FieldDescriptorProto_TYPE_FIXED64:
-		t = typeUint64
+		t = gopoet.Uint64Type
 	case dpb.FieldDescriptorProto_TYPE_FLOAT:
-		t = typeFloat32
+		t = gopoet.Float32Type
 	case dpb.FieldDescriptorProto_TYPE_DOUBLE:
-		t = typeFloat64
+		t = gopoet.Float64Type
 	case dpb.FieldDescriptorProto_TYPE_GROUP,
 		dpb.FieldDescriptorProto_TYPE_MESSAGE:
-		t = ptrType(n.GoTypeForMessage(fld.GetMessageType()))
+		t = gopoet.PointerType(n.GoTypeForMessage(fld.GetMessageType()))
 	case dpb.FieldDescriptorProto_TYPE_ENUM:
 		t = n.GoTypeForEnum(fld.GetEnumType())
 	}
 
 	if fld.IsRepeated() {
-		t = sliceType(t)
+		t = gopoet.SliceType(t)
 	}
 	n.descTypes[typeKey{d: fld, k: typeKeyAccessor}] = t
 
-	if !fld.GetFile().IsProto3() && t.Kind() != KindPtr && t.Kind() != KindSlice {
+	if !fld.GetFile().IsProto3() && t.Kind() != gopoet.KindPtr && t.Kind() != gopoet.KindSlice {
 		// for proto2, type is pointer or slice
-		n.descTypes[typeKey{d: fld, k: typeKeyDefault}] = ptrType(t)
+		n.descTypes[typeKey{d: fld, k: typeKeyDefault}] = gopoet.PointerType(t)
 	} else {
 		// otherwise, field and accessor types are the same
 		n.descTypes[typeKey{d: fld, k: typeKeyDefault}] = t
@@ -336,7 +339,7 @@ func (n *GoNames) computeTypeOfFieldLocked(fld *desc.FieldDescriptor) {
 
 // GoTypeForServiceClient returns the Go type of the generated client interface
 // for the given service descriptor.
-func (n *GoNames) GoTypeForServiceClient(sd *desc.ServiceDescriptor) *TypeName {
+func (n *GoNames) GoTypeForServiceClient(sd *desc.ServiceDescriptor) gopoet.TypeName {
 	return n.getOrComputeType(typeKey{d: sd, k: typeKeyClient}, func() {
 		n.computeService(sd)
 	})
@@ -344,7 +347,7 @@ func (n *GoNames) GoTypeForServiceClient(sd *desc.ServiceDescriptor) *TypeName {
 
 // GoTypeForServiceServer returns the Go type of the generated server interface
 // for the given service descriptor.
-func (n *GoNames) GoTypeForServiceServer(sd *desc.ServiceDescriptor) *TypeName {
+func (n *GoNames) GoTypeForServiceServer(sd *desc.ServiceDescriptor) gopoet.TypeName {
 	return n.getOrComputeType(typeKey{d: sd, k: typeKeyServer}, func() {
 		n.computeService(sd)
 	})
@@ -388,7 +391,7 @@ func (n *GoNames) GoNameOfMethod(md *desc.MethodDescriptor) string {
 // GoTypeForStreamClient returns the Go type of the generated client stream
 // interface for the given method descriptor. The given method must not be a
 // unary method.
-func (n *GoNames) GoTypeForStreamClient(md *desc.MethodDescriptor) *TypeName {
+func (n *GoNames) GoTypeForStreamClient(md *desc.MethodDescriptor) gopoet.TypeName {
 	return n.getOrComputeType(typeKey{d: md, k: typeKeyClient}, func() {
 		n.computeService(md.GetService())
 	})
@@ -397,7 +400,7 @@ func (n *GoNames) GoTypeForStreamClient(md *desc.MethodDescriptor) *TypeName {
 // GoTypeForStreamServer returns the Go type of the generated server stream
 // interface for the given method descriptor. The given method must not be a
 // unary method.
-func (n *GoNames) GoTypeForStreamServer(md *desc.MethodDescriptor) *TypeName {
+func (n *GoNames) GoTypeForStreamServer(md *desc.MethodDescriptor) gopoet.TypeName {
 	return n.getOrComputeType(typeKey{d: md, k: typeKeyClient}, func() {
 		n.computeService(md.GetService())
 	})
@@ -429,12 +432,12 @@ func (n *GoNames) GoTypeForStreamServerImpl(md *desc.MethodDescriptor) string {
 	})
 }
 
-func (n *GoNames) GoTypeOfRequest(md *desc.MethodDescriptor) *TypeName {
-	return ptrType(n.GoTypeForMessage(md.GetInputType()))
+func (n *GoNames) GoTypeOfRequest(md *desc.MethodDescriptor) gopoet.TypeName {
+	return gopoet.PointerType(n.GoTypeForMessage(md.GetInputType()))
 }
 
-func (n *GoNames) GoTypeOfResponse(md *desc.MethodDescriptor) *TypeName {
-	return ptrType(n.GoTypeForMessage(md.GetOutputType()))
+func (n *GoNames) GoTypeOfResponse(md *desc.MethodDescriptor) gopoet.TypeName {
+	return gopoet.PointerType(n.GoTypeForMessage(md.GetOutputType()))
 }
 
 // CamelCase converts the given symbol to an exported Go symbol in camel-case
@@ -463,19 +466,19 @@ func Export(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
-func (n *GoNames) getOrComputeAndStoreType(key typeKey, compute func() *TypeName) *TypeName {
+func (n *GoNames) getOrComputeAndStoreType(key typeKey, compute func() gopoet.TypeName) gopoet.TypeName {
 	return n.getOrComputeType(key, func() {
 		n.descTypes[key] = compute()
 	})
 }
 
-func (n *GoNames) getOrComputeType(key typeKey, compute func()) *TypeName {
+func (n *GoNames) getOrComputeType(key typeKey, compute func()) gopoet.TypeName {
 	if tn, ok := n.descTypes[key]; ok {
 		return tn
 	}
 
 	if n.descTypes == nil {
-		n.descTypes = map[typeKey]*TypeName{}
+		n.descTypes = map[typeKey]gopoet.TypeName{}
 	}
 	if n.descNames == nil {
 		n.descNames = map[nameKey]string{}
@@ -496,7 +499,7 @@ func (n *GoNames) getOrComputeName(key nameKey, compute func()) string {
 	}
 
 	if n.descTypes == nil {
-		n.descTypes = map[typeKey]*TypeName{}
+		n.descTypes = map[typeKey]gopoet.TypeName{}
 	}
 	if n.descNames == nil {
 		n.descNames = map[nameKey]string{}
@@ -510,8 +513,8 @@ func (n *GoNames) computeService(sd *desc.ServiceDescriptor) {
 	unexportedSvr := Unexport(exportedSvr)
 	pkg := n.GoPackageForFile(sd.GetFile())
 
-	n.descTypes[typeKey{d: sd, k: typeKeyClient}] = namedType(&Symbol{Package: pkg, Name: exportedSvr + "Client"})
-	n.descTypes[typeKey{d: sd, k: typeKeyServer}] = namedType(&Symbol{Package: pkg, Name: exportedSvr + "Server"})
+	n.descTypes[typeKey{d: sd, k: typeKeyClient}] = gopoet.NamedType(&gopoet.Symbol{Package: pkg, Name: exportedSvr + "Client"})
+	n.descTypes[typeKey{d: sd, k: typeKeyServer}] = gopoet.NamedType(&gopoet.Symbol{Package: pkg, Name: exportedSvr + "Server"})
 	n.descNames[nameKey{d: sd, k: nameKeyServiceImplClient}] = unexportedSvr + "Client"
 	n.descNames[nameKey{d: sd, k: nameKeyServiceDesc}] = "_" + exportedSvr + "_serviceDesc"
 
@@ -526,8 +529,8 @@ func (n *GoNames) computeService(sd *desc.ServiceDescriptor) {
 
 		exportedStream := exportedSvr + "_" + mtdName
 		unexportedStream := unexportedSvr + mtdName
-		n.descTypes[typeKey{d: mtd, k: typeKeyClient}] = namedType(&Symbol{Package: pkg, Name: exportedStream + "Client"})
-		n.descTypes[typeKey{d: mtd, k: typeKeyServer}] = namedType(&Symbol{Package: pkg, Name: exportedStream + "Server"})
+		n.descTypes[typeKey{d: mtd, k: typeKeyClient}] = gopoet.NamedType(&gopoet.Symbol{Package: pkg, Name: exportedStream + "Client"})
+		n.descTypes[typeKey{d: mtd, k: typeKeyServer}] = gopoet.NamedType(&gopoet.Symbol{Package: pkg, Name: exportedStream + "Server"})
 		n.descNames[nameKey{d: mtd, k: nameKeyMethodStreamImplClient}] = unexportedStream + "Client"
 		n.descNames[nameKey{d: mtd, k: nameKeyMethodStreamImplServer}] = unexportedStream + "Server"
 	}
@@ -609,7 +612,7 @@ func (n *GoNames) computeMessage(md *desc.MessageDescriptor) {
 				}
 				oneofFieldName = oneofFieldName + "_"
 			}
-			n.descTypes[typeKey{d: fld, k: typeKeyOneOfField}] = namedType(&Symbol{Package: pkg, Name: oneofFieldName})
+			n.descTypes[typeKey{d: fld, k: typeKeyOneOfField}] = gopoet.NamedType(&gopoet.Symbol{Package: pkg, Name: oneofFieldName})
 
 			computedOneOfs[ood] = true
 		}
