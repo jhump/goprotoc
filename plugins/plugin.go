@@ -79,6 +79,19 @@ func (resp *CodeGenResponse) OutputFile(name string) io.Writer {
 	return resp.OutputSnippet(name, "")
 }
 
+func (resp *CodeGenResponse) ForEach(fn func(name, insertionPoint string, data io.Reader) error) error {
+	resp.output.mu.Lock()
+	defer resp.output.mu.Unlock()
+	for res, ds := range resp.output.files {
+		for _, d := range ds {
+			if err := fn(res.name, res.insertionPoint, d.contents); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // ProtocVersion represents a version of the protoc tool.
 type ProtocVersion struct {
 	Major, Minor, Patch int

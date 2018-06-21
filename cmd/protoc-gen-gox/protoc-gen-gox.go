@@ -32,7 +32,7 @@
 // The plugin name "go-grpc" is a pseudo-plugin. When enabled or disabled, it
 // means to add or remove the "grpc" label from any "plugins" arg for the
 // standard go plugin (protoc-gen-go). You can enable or disable it from the
-// protoc args using a "-go-grpc" or "+go-grpc" arg to the gox plugin. It is
+// protoc args using a "+go-grpc" or "-go-grpc" arg to the gox plugin. It is
 // not allowed to configure this psuedo-plugin in a config file: configure the
 // standard "go" plugin instead with a "plugins=grpc" argument.
 //
@@ -59,6 +59,16 @@
 //    # (but don't have to: "foobar" could also be used for this one):
 //    protoc-gen-foobar: {} # empty config is fine
 //
+// Go Plugins
+//
+// The protoc-gen-gox program can load Go plugins and execute them (instead of
+// forking them as separate executables). If a given protoc plugin binary is
+// compiled as a Go plugin, then it should register itself from an init function
+// using the goxplugin.Register function. The protoc-gen-gox program will then
+// link in the Go plugin at runtime and execute any such plugins that were
+// registered when the plugin binary was initialized. If a given protoc plugin
+// is *not* a Go plugin or fails to register any plugins, it will then be
+// invoked as a standard protoc plugin executable.
 package main
 
 import (
@@ -73,6 +83,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v2"
 
+	"github.com/jhump/goprotoc/cmd/protoc-gen-gox/goxplugin"
 	"github.com/jhump/goprotoc/plugins"
 )
 
@@ -96,14 +107,14 @@ func doCodeGen(req *plugins.CodeGenRequest, resp *plugins.CodeGenResponse) error
 	asGoPlugin := map[string]*pluginConfig{}
 	asExecutable := map[string]*pluginConfig{}
 
-	reg := plugins.GetRegisteredPlugins()
+	reg := goxplugin.GetAll()
 	for plName, plConf := range conf.plugins {
 		// try to load them as Go plugins first
 		if _, err := plugin.Open(plConf.Location); err != nil {
 			asExecutable[plName] = plConf
 			continue
 		}
-		newReg := plugins.GetRegisteredPlugins()
+		newReg := goxplugin.GetAll()
 		if len(newReg) == len(reg) {
 			// no new plugins registered...
 			asExecutable[plName] = plConf

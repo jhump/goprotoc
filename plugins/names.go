@@ -24,7 +24,7 @@ type GoNames struct {
 	// cache of descriptor to names
 	descNames map[nameKey]string
 	// cache of extension field descriptors to symbol representing generated var
-	extSymbols map[*desc.FieldDescriptor]*gopoet.Symbol
+	extSymbols map[*desc.FieldDescriptor]gopoet.Symbol
 	// cache of file descriptor to Package
 	pkgNames map[*desc.FileDescriptor]gopoet.Package
 }
@@ -171,7 +171,7 @@ func (n *GoNames) goTypeFor(d desc.Descriptor) gopoet.TypeName {
 	})
 }
 
-func (n *GoNames) goSymbolFor(d desc.Descriptor) *gopoet.Symbol {
+func (n *GoNames) goSymbolFor(d desc.Descriptor) gopoet.Symbol {
 	l := 0
 	for parent := d; !isFile(parent); parent = parent.GetParent() {
 		l++
@@ -181,10 +181,7 @@ func (n *GoNames) goSymbolFor(d desc.Descriptor) *gopoet.Symbol {
 		l--
 		s[l] = parent.GetName()
 	}
-	return &gopoet.Symbol{
-		Package: n.GoPackageForFile(d.GetFile()),
-		Name:    generator.CamelCaseSlice(s),
-	}
+	return n.GoPackageForFile(d.GetFile()).Symbol(generator.CamelCaseSlice(s))
 }
 
 func isFile(d desc.Descriptor) bool {
@@ -239,7 +236,7 @@ func (n *GoNames) GoNameOfOneOf(ood *desc.OneOfDescriptor) string {
 
 // GoNameOfExtensionDesc returns the name of the *proto.ExtensionDesc var that
 // represents the given extension field descriptor.
-func (n *GoNames) GoNameOfExtensionDesc(fld *desc.FieldDescriptor) *gopoet.Symbol {
+func (n *GoNames) GoNameOfExtensionDesc(fld *desc.FieldDescriptor) gopoet.Symbol {
 	if !fld.IsExtension() {
 		panic(fmt.Sprintf("field %s is not an extension", fld.GetFullyQualifiedName()))
 	}
@@ -251,7 +248,7 @@ func (n *GoNames) GoNameOfExtensionDesc(fld *desc.FieldDescriptor) *gopoet.Symbo
 	sym := n.goSymbolFor(fld)
 	sym.Name = "E_" + sym.Name
 	if n.extSymbols == nil {
-		n.extSymbols = map[*desc.FieldDescriptor]*gopoet.Symbol{}
+		n.extSymbols = map[*desc.FieldDescriptor]gopoet.Symbol{}
 	}
 	n.extSymbols[fld] = sym
 	return sym
@@ -513,8 +510,8 @@ func (n *GoNames) computeService(sd *desc.ServiceDescriptor) {
 	unexportedSvr := Unexport(exportedSvr)
 	pkg := n.GoPackageForFile(sd.GetFile())
 
-	n.descTypes[typeKey{d: sd, k: typeKeyClient}] = gopoet.NamedType(&gopoet.Symbol{Package: pkg, Name: exportedSvr + "Client"})
-	n.descTypes[typeKey{d: sd, k: typeKeyServer}] = gopoet.NamedType(&gopoet.Symbol{Package: pkg, Name: exportedSvr + "Server"})
+	n.descTypes[typeKey{d: sd, k: typeKeyClient}] = gopoet.NamedType(pkg.Symbol(exportedSvr + "Client"))
+	n.descTypes[typeKey{d: sd, k: typeKeyServer}] = gopoet.NamedType(pkg.Symbol(exportedSvr + "Server"))
 	n.descNames[nameKey{d: sd, k: nameKeyServiceImplClient}] = unexportedSvr + "Client"
 	n.descNames[nameKey{d: sd, k: nameKeyServiceDesc}] = "_" + exportedSvr + "_serviceDesc"
 
@@ -529,8 +526,8 @@ func (n *GoNames) computeService(sd *desc.ServiceDescriptor) {
 
 		exportedStream := exportedSvr + "_" + mtdName
 		unexportedStream := unexportedSvr + mtdName
-		n.descTypes[typeKey{d: mtd, k: typeKeyClient}] = gopoet.NamedType(&gopoet.Symbol{Package: pkg, Name: exportedStream + "Client"})
-		n.descTypes[typeKey{d: mtd, k: typeKeyServer}] = gopoet.NamedType(&gopoet.Symbol{Package: pkg, Name: exportedStream + "Server"})
+		n.descTypes[typeKey{d: mtd, k: typeKeyClient}] = gopoet.NamedType(pkg.Symbol(exportedStream + "Client"))
+		n.descTypes[typeKey{d: mtd, k: typeKeyServer}] = gopoet.NamedType(pkg.Symbol(exportedStream + "Server"))
 		n.descNames[nameKey{d: mtd, k: nameKeyMethodStreamImplClient}] = unexportedStream + "Client"
 		n.descNames[nameKey{d: mtd, k: nameKeyMethodStreamImplServer}] = unexportedStream + "Server"
 	}
@@ -612,7 +609,7 @@ func (n *GoNames) computeMessage(md *desc.MessageDescriptor) {
 				}
 				oneofFieldName = oneofFieldName + "_"
 			}
-			n.descTypes[typeKey{d: fld, k: typeKeyOneOfField}] = gopoet.NamedType(&gopoet.Symbol{Package: pkg, Name: oneofFieldName})
+			n.descTypes[typeKey{d: fld, k: typeKeyOneOfField}] = gopoet.NamedType(pkg.Symbol(oneofFieldName))
 
 			computedOneOfs[ood] = true
 		}
