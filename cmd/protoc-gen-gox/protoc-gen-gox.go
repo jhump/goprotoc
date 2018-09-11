@@ -88,11 +88,7 @@ import (
 )
 
 func main() {
-	output := os.Stdout
-	os.Stdout = os.Stderr
-	if err := plugins.RunPlugin(os.Args[0], doCodeGen, os.Stdin, output); err != nil {
-		os.Exit(1)
-	}
+	plugins.PluginMain(doCodeGen)
 }
 
 func doCodeGen(req *plugins.CodeGenRequest, resp *plugins.CodeGenResponse) error {
