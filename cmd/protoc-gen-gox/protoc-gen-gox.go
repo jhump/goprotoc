@@ -243,7 +243,7 @@ func getConfig(args []string) (*effectiveConfig, error) {
 		}
 		if existing := result.plugins[plName]; existing != nil {
 			if existing.Location != plConf.Location {
-
+				return nil, fmt.Errorf("%s: plugin %s is configured more than once with conflicting plugin locations: %s and %s", configFile, plName, existing.Location, plConf.Location)
 			}
 		}
 		plConf.Params = append(conf.CommonParams, plConf.Params...)
@@ -281,6 +281,7 @@ func getConfig(args []string) (*effectiveConfig, error) {
 					params = append(params, p)
 				}
 			}
+			plConf.Params = params
 		} else if grpcEnabled == 1 {
 			// grpc explicitly enabled: make sure it is present
 			plArgIndex := -1

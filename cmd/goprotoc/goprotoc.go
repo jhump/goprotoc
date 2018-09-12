@@ -79,11 +79,13 @@ func main() {
 
 	if len(opts.inputDescriptors) > 0 && len(opts.includePaths) > 0 {
 		// TODO: error
+		_ = 0
 	}
 
 	var fds []*desc.FileDescriptor
 	if len(opts.inputDescriptors) > 0 {
 		// TODO
+		_ = 0
 	} else {
 		p := protoparse.Parser{
 			ImportPaths:           opts.includePaths,
@@ -107,15 +109,19 @@ func main() {
 
 	if opts.encodeType != "" {
 		// TODO: do encoding
+		_ = 0
 	}
 	if opts.decodeType != "" {
 		// TODO: do decoding
+		_ = 0
 	}
 	if opts.decodeRaw {
 		// TODO: do decoding
+		_ = 0
 	}
 	if opts.printFreeFieldNumbers {
 		// TODO: print field numbers
+		_ = 0
 	}
 
 	// TODO: factor this into a function
@@ -156,6 +162,7 @@ func main() {
 			if insertionPoint == "" {
 				if o.createdBy != "" {
 					// TODO: error
+					_ = 0
 				}
 				o.contents = data
 				o.createdBy = lang
@@ -179,6 +186,7 @@ func main() {
 	for fileName, output := range results {
 		if output.contents == nil {
 			// TODO: fail
+			_ = 0
 		}
 		fileContents := output.contents
 		if len(output.insertions) > 0 {
@@ -190,10 +198,12 @@ func main() {
 		w, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 		if err != nil {
 			// TODO: fail
+			_ = 0
 		}
 		_, err = io.Copy(w, fileContents)
 		if err != nil {
 			// TODO: fail
+			_ = 0
 		}
 	}
 }
@@ -258,7 +268,7 @@ func parseFlags(source string, args []string, sourcesSeen map[string]struct{}) (
 		}
 		noOptionArg := func() {
 			if len(parts) > 1 {
-				fail(fmt.Sprintf("%%s does not take a parameter", loc(), parts[0]))
+				fail(fmt.Sprintf("%s%s does not take a parameter", loc(), parts[0]))
 			}
 		}
 
@@ -524,6 +534,7 @@ func applyInsertions(contents io.Reader, insertions map[string][]insertedContent
 
 	if len(insertions) > 0 {
 		// TODO: fail with missing insertion points
+		_ = 0
 	}
 
 	result.Write(data)

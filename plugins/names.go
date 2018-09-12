@@ -466,12 +466,6 @@ func (n *GoNames) getOrComputeType(key typeKey, compute func()) gopoet.TypeName 
 	return n.descTypes[key]
 }
 
-func (n *GoNames) getOrComputeAndStoreName(key nameKey, compute func() string) string {
-	return n.getOrComputeName(key, func() {
-		n.descNames[key] = compute()
-	})
-}
-
 func (n *GoNames) getOrComputeName(key nameKey, compute func()) string {
 	if n, ok := n.descNames[key]; ok {
 		return n
