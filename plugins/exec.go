@@ -99,6 +99,26 @@ func addRecursive(fds []*desc.FileDescriptor, files *[]*dpb.FileDescriptorProto,
 	}
 }
 
+// PluginMain should be called from main functions of protoc plugins that are
+// written in Go. This will handle invoking the given plugin function, handling
+// any errors, writing the results to the process's stdout, and then exiting the
+// process.
+func PluginMain(plugin Plugin) {
+	output := os.Stdout
+
+	// We need to be strict about what goes to stdout: only the plugin response.
+	// So if any code accidentally tries to print to stdout, let's have it go to
+	// stderr instead.
+	os.Stdout = os.Stderr
+
+	if err := RunPlugin(os.Args[0], plugin, os.Stdin, output); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+	// Success!
+	os.Exit(0)
+}
+
 // RunPlugin runs the given plugin. Errors are reported using the given name.
 // The protoc request is read from in and the plugin's results are written to
 // out. Under most circumstances, this function will return nil, even if an

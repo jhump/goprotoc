@@ -445,24 +445,6 @@ func CamelCase(s string) string {
 	return generator.CamelCase(s)
 }
 
-// Unexport returns an unexported form of the given name. It does not try to
-// verify that s is a valid symbol in Go nor does it check whether s is already
-// unexported.
-func Unexport(s string) string {
-	return strings.ToLower(s[:1]) + s[1:]
-}
-
-// Export returns an exported form of the given name. It does not try to verify
-// that s is a valid symbol in Go nor does it check whether s is already
-// exported. If s begins with an underscore, it will be replaced with a capital
-// "X".
-func Export(s string) string {
-	if s[0] == '_' {
-		return "X" + s[1:]
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
-}
-
 func (n *GoNames) getOrComputeAndStoreType(key typeKey, compute func() gopoet.TypeName) gopoet.TypeName {
 	return n.getOrComputeType(key, func() {
 		n.descTypes[key] = compute()
@@ -484,12 +466,6 @@ func (n *GoNames) getOrComputeType(key typeKey, compute func()) gopoet.TypeName 
 	return n.descTypes[key]
 }
 
-func (n *GoNames) getOrComputeAndStoreName(key nameKey, compute func() string) string {
-	return n.getOrComputeName(key, func() {
-		n.descNames[key] = compute()
-	})
-}
-
 func (n *GoNames) getOrComputeName(key nameKey, compute func()) string {
 	if n, ok := n.descNames[key]; ok {
 		return n
@@ -505,9 +481,18 @@ func (n *GoNames) getOrComputeName(key nameKey, compute func()) string {
 	return n.descNames[key]
 }
 
+// CamelCase converts the given identifier to an exported name that uses
+// camel-case. Interior underscores followed by lower-case letters will be
+// changed to upper-case letters. If the name begins with an underscore, it will
+// be replaced with "X" so the resulting identifier is exported without
+// colliding with similar identifier that does not being with an underscore.
+func (n *GoNames) CamelCase(name string) string {
+	return generator.CamelCase(name)
+}
+
 func (n *GoNames) computeService(sd *desc.ServiceDescriptor) {
 	exportedSvr := generator.CamelCase(sd.GetName())
-	unexportedSvr := Unexport(exportedSvr)
+	unexportedSvr := gopoet.Unexport(exportedSvr)
 	pkg := n.GoPackageForFile(sd.GetFile())
 
 	n.descTypes[typeKey{d: sd, k: typeKeyClient}] = gopoet.NamedType(pkg.Symbol(exportedSvr + "Client"))
