@@ -6,7 +6,15 @@ matrix:
     - go: "1.9"
     - go: "1.10"
     - go: "1.11"
-      env: VET=1
+      env:
+      - GO111MODULE=off
+      - VET=1
+    - go: "1.11"
+      env: GO111MODULE=on
+    - go: "1.12"
+      env: GO111MODULE=off
+    - go: "1.12"
+      env: GO111MODULE=on
     - go: tip
 
 script:
