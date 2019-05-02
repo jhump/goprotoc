@@ -4,8 +4,8 @@
 //
 // Interface for Protoc Plugins
 //
-// A simple protoc plugin can simply provide a function whose signature
-// matches the Plugin type and then wire it up in a main method like so:
+// A protoc plugin need only provide a function whose signature matches the
+// Plugin type and then wire it up in a main method like so:
 //
 //    func main() {
 //        output := os.Stdout
