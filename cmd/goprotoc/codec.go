@@ -1,11 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"math"
-	"strings"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/jhump/protoreflect/desc"
@@ -171,7 +171,7 @@ func decodeRawMessage(in *codedReader, w io.Writer, indent string, inGroup bool)
 func quoteString(s []byte) string {
 	// strings.Builder returns nil error for all Write* methods,
 	// so we ignore error return values in method calls below
-	var buf strings.Builder
+	var buf bytes.Buffer
 	// use WriteByte here to get any needed indent
 	_ = buf.WriteByte('"')
 	// Loop over the bytes, not the runes.
@@ -205,7 +205,7 @@ func quoteString(s []byte) string {
 func quoteBytes(b []byte) string {
 	// strings.Builder returns nil error for all Write* methods,
 	// so we ignore error return values in method calls below
-	var buf strings.Builder
+	var buf bytes.Buffer
 	// use WriteByte here to get any needed indent
 	_ = buf.WriteByte('"')
 	// Loop over the bytes, not the runes.
