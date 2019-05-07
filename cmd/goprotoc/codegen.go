@@ -319,7 +319,7 @@ func applyInsertions(fileName string, contents io.Reader, insertions map[string]
 			}
 		}
 		var sb strings.Builder
-		_, _  = fmt.Fprintf(&sb, "missing insertion point(s) in %q: ", fileName)
+		_, _ = fmt.Fprintf(&sb, "missing insertion point(s) in %q: ", fileName)
 		first := true
 		for lang, points := range pointsByLang {
 			pointSlice := make([]string, 0, len(points))

@@ -111,7 +111,7 @@ func fail(message string) {
 
 func usage(exitCode int) {
 	fmt.Printf(
-`Usage: %s [OPTION] PROTO_FILES
+		`Usage: %s [OPTION] PROTO_FILES
 Parse PROTO_FILES and generate output based on the options given:
   -IPATH, --proto_path=PATH   Specify the directory in which to search for
                               imports.  May be specified multiple times;

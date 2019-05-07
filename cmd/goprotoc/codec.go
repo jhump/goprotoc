@@ -146,7 +146,7 @@ func decodeRawMessage(in *codedReader, w io.Writer, indent string, inGroup bool)
 			if isProbablyMessage(v) {
 				fmt.Fprintf(w, "%s%d: <\n", indent, t)
 				nested := newCodedReader(v)
-				if err := decodeRawMessage(nested, w, indent + "  ", false); err != nil {
+				if err := decodeRawMessage(nested, w, indent+"  ", false); err != nil {
 					return err
 				}
 				fmt.Fprintf(w, "%s>\n", indent)
@@ -157,7 +157,7 @@ func decodeRawMessage(in *codedReader, w io.Writer, indent string, inGroup bool)
 			}
 		case proto.WireStartGroup:
 			fmt.Fprintf(w, "%s%d {\n", indent, t)
-			if err := decodeRawMessage(in, w, indent + "  ", true); err != nil {
+			if err := decodeRawMessage(in, w, indent+"  ", true); err != nil {
 				return err
 			}
 			fmt.Fprintf(w, "%s}\n", indent)

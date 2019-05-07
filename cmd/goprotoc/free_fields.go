@@ -42,7 +42,7 @@ func computeFreeRanges(md *desc.MessageDescriptor) []tagRange {
 		used = append(used, tagRange{start: fd.GetNumber(), end: fd.GetNumber()})
 	}
 	for _, rr := range md.AsDescriptorProto().GetReservedRange() {
-		used = append(used, tagRange{start: rr.GetStart(), end: rr.GetEnd()-1})
+		used = append(used, tagRange{start: rr.GetStart(), end: rr.GetEnd() - 1})
 	}
 	for _, extr := range md.GetExtensionRanges() {
 		used = append(used, tagRange{start: extr.Start, end: extr.End})
@@ -59,11 +59,11 @@ func computeFreeRanges(md *desc.MessageDescriptor) []tagRange {
 			last = r.end
 			continue
 		}
-		unused = append(unused, tagRange{start: last+1, end: r.start-1})
+		unused = append(unused, tagRange{start: last + 1, end: r.start - 1})
 		last = r.end
 	}
 	if last < maxTag {
-		unused = append(unused, tagRange{start: last+1, end: maxTag})
+		unused = append(unused, tagRange{start: last + 1, end: maxTag})
 	}
 	return unused
 }
