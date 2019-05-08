@@ -79,6 +79,9 @@ func (resp *CodeGenResponse) OutputFile(name string) io.Writer {
 	return resp.OutputSnippet(name, "")
 }
 
+// ForEach invokes the given function for each output in the response so far.
+// The given reader provides access to examine the file/snippet contents. If the
+// function returns an error, ForEach stops iteration and returns that error.
 func (resp *CodeGenResponse) ForEach(fn func(name, insertionPoint string, data io.Reader) error) error {
 	resp.output.mu.Lock()
 	defer resp.output.mu.Unlock()

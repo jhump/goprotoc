@@ -11,532 +11,289 @@
 // generation logic: it can only execute plugins to generate code. In order
 // to generate code that is built into the standard protoc (such as Python,
 // C++, Java, etc), this program can shell out to the standard protoc,
-// driving it as if it were a plugin.
+// driving it as if it were a plugin. In this mode, it provides to protoc
+// the file descriptors it has already parsed, instead of asking protoc to
+// re-parse all of the source code.
 package main
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/protoc-gen-go/descriptor"
 	"github.com/jhump/protoreflect/desc"
 	"github.com/jhump/protoreflect/desc/protoparse"
-
-	"github.com/jhump/goprotoc/plugins"
-	"golang.org/x/net/context"
-	"unicode"
 )
 
 const protocVersionEmu = "goprotoc 3.5.1"
 
-var protocVersionStruct = plugins.ProtocVersion{
-	Major:  3,
-	Minor:  5,
-	Patch:  1,
-	Suffix: "go",
-}
-
 var gitSha = "" // can be replaced by -X linker flag
 
-type protocOptions struct {
-	includePaths          []string
-	encodeType            string
-	decodeType            string
-	decodeRaw             bool
-	inputDescriptors      []string
-	outputDescriptor      string
-	includeImports        bool
-	includeSourceInfo     bool
-	printFreeFieldNumbers bool
-	pluginDefs            map[string]string
-	output                map[string]string
-	protoFiles            []string
-}
-
-var protocOutputs = map[string]struct{}{
-	"cpp":      {},
-	"csharp":   {},
-	"java":     {},
-	"javanano": {},
-	"js":       {},
-	"objc":     {},
-	"php":      {},
-	"python":   {},
-	"ruby":     {},
-}
-
 func main() {
-	opts, err := parseFlags("", os.Args[1:], map[string]struct{}{})
-	if err != nil {
+	var opts protocOptions
+	if err := parseFlags("", os.Args[1:], &opts, map[string]struct{}{}); err != nil {
 		fail(err.Error())
 	}
 
 	if len(opts.inputDescriptors) > 0 && len(opts.includePaths) > 0 {
-		// TODO: error
-		_ = 0
+		fail("Only one of --descriptor_set_in and --proto_path can be specified.")
+	}
+
+	if len(opts.protoFiles) == 0 && !opts.decodeRaw {
+		fail("Missing input file.")
+	} else if len(opts.protoFiles) > 0 && opts.decodeRaw {
+		fail("When using --decode_raw, no input files should be given.")
 	}
 
 	var fds []*desc.FileDescriptor
-	if len(opts.inputDescriptors) > 0 {
-		// TODO
-		_ = 0
-	} else {
-		p := protoparse.Parser{
-			ImportPaths:           opts.includePaths,
-			IncludeSourceCodeInfo: opts.includeSourceInfo,
-		}
-		var err error
-		if fds, err = p.ParseFiles(opts.protoFiles...); err != nil {
-			fail(err.Error())
+	if len(opts.protoFiles) > 0 {
+		if len(opts.inputDescriptors) > 0 {
+			var err error
+			if fds, err = loadDescriptors(opts.inputDescriptors, opts.protoFiles); err != nil {
+				fail(err.Error())
+			}
+		} else {
+			p := protoparse.Parser{
+				ImportPaths:           opts.includePaths,
+				IncludeSourceCodeInfo: opts.includeSourceInfo,
+			}
+			var err error
+			if fds, err = p.ParseFiles(opts.protoFiles...); err != nil {
+				fail(err.Error())
+			}
 		}
 	}
 
-	if len(opts.output) > 0 && opts.encodeType != "" {
+	doingCodeGen := len(opts.output) > 0 || opts.outputDescriptor != ""
+	if doingCodeGen && opts.encodeType != "" {
 		fail("Cannot use --encode and generate code or descriptors at the same time.")
 	}
-	if len(opts.output) > 0 && (opts.decodeType != "" || opts.decodeRaw) {
+	if doingCodeGen && (opts.decodeType != "" || opts.decodeRaw) {
 		fail("Cannot use --decode and generate code or descriptors at the same time.")
 	}
 	if opts.encodeType != "" && (opts.decodeType != "" || opts.decodeRaw) {
 		fail("Only one of --encode and --decode can be specified.")
 	}
 
-	if opts.encodeType != "" {
-		// TODO: do encoding
-		_ = 0
-	}
-	if opts.decodeType != "" {
-		// TODO: do decoding
-		_ = 0
-	}
-	if opts.decodeRaw {
-		// TODO: do decoding
-		_ = 0
-	}
-	if opts.printFreeFieldNumbers {
-		// TODO: print field numbers
-		_ = 0
-	}
-
-	// TODO: factor this into a function
-	// code gen
-	if len(opts.output) == 0 {
-		fail("Missing output directives.")
-	}
-	req := plugins.CodeGenRequest{
-		Files:         fds,
-		ProtocVersion: protocVersionStruct,
-	}
-	resps := map[string]*plugins.CodeGenResponse{}
-	locations := map[string]string{}
-	for lang, loc := range opts.output {
-		resp := plugins.NewCodeGenResponse(lang, nil)
-		resps[lang] = resp
-		locParts := strings.SplitN(loc, ":", 2)
-		var arg string
-		if len(locParts) > 1 {
-			arg = locParts[0]
-			locations[lang] = locParts[1]
-		} else {
-			locations[lang] = loc
+	var err error
+	switch {
+	case opts.encodeType != "":
+		err = doEncode(opts.encodeType, fds, os.Stdin, os.Stdout)
+	case opts.decodeType != "":
+		err = doDecode(opts.decodeType, fds, os.Stdin, os.Stdout)
+	case opts.decodeRaw:
+		err = doDecodeRaw(os.Stdin, os.Stdout)
+	case opts.printFreeFieldNumbers:
+		doPrintFreeFieldNumbers(fds, os.Stdout)
+	default:
+		if !doingCodeGen {
+			fail("Missing output directives.")
 		}
-		if err := executePlugin(&req, resp, opts, lang, arg); err != nil {
-			fail(err.Error())
+		if len(opts.output) > 0 {
+			err = doCodeGen(opts.output, fds, opts.pluginDefs)
+		}
+		if err == nil && opts.outputDescriptor != "" {
+			err = saveDescriptor(opts.outputDescriptor, fds, opts.includeImports, opts.includeSourceInfo)
 		}
 	}
-	results := map[string]fileOutput{}
-	for lang, resp := range resps {
-		err := resp.ForEach(func(name, insertionPoint string, data io.Reader) error {
-			loc := locations[lang]
-			fullName, err := filepath.Abs(filepath.Join(loc, name))
-			if err != nil {
-				return err
-			}
-			o := results[fullName]
-			if insertionPoint == "" {
-				if o.createdBy != "" {
-					// TODO: error
-					_ = 0
-				}
-				o.contents = data
-				o.createdBy = lang
-			} else {
-				if o.insertions == nil {
-					o.insertions = map[string][]insertedContent{}
-					o.insertsFrom = map[string]struct{}{}
-				}
-				content := insertedContent{data: data, lang: lang}
-				o.insertions[insertionPoint] = append(o.insertions[insertionPoint], content)
-				o.insertsFrom[lang] = struct{}{}
-			}
-			results[fullName] = o
-			return nil
-		})
-		if err != nil {
-			fail(err.Error())
-		}
+	if err != nil {
+		fail(err.Error())
 	}
-
-	for fileName, output := range results {
-		if output.contents == nil {
-			// TODO: fail
-			_ = 0
-		}
-		fileContents := output.contents
-		if len(output.insertions) > 0 {
-			fileContents, err = applyInsertions(output.contents, output.insertions)
-			if err != nil {
-				fail(err.Error())
-			}
-		}
-		w, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
-		if err != nil {
-			// TODO: fail
-			_ = 0
-		}
-		_, err = io.Copy(w, fileContents)
-		if err != nil {
-			// TODO: fail
-			_ = 0
-		}
-	}
-}
-
-type fileOutput struct {
-	contents    io.Reader
-	createdBy   string
-	insertions  map[string][]insertedContent
-	insertsFrom map[string]struct{}
-}
-
-func parseFlags(source string, args []string, sourcesSeen map[string]struct{}) (*protocOptions, error) {
-	var opts protocOptions
-	if _, ok := sourcesSeen[source]; ok {
-		return nil, fmt.Errorf("cycle detected in option files: %s references itself (possibly indirectly)", source)
-	}
-	sourcesSeen[source] = struct{}{}
-
-	for i := 0; i < len(args); i++ {
-		loc := func() string {
-			if source == "" {
-				return ""
-			}
-			return fmt.Sprintf("%s:%d: ", source, i+1)
-		}
-
-		a := args[i]
-		if a == "--" {
-			opts.protoFiles = append(opts.protoFiles, args[i+1:]...)
-			break
-		}
-		if !strings.HasPrefix(a, "-") {
-			opts.protoFiles = append(opts.protoFiles, a)
-			continue
-		}
-		parts := strings.SplitN(args[i], "=", 2)
-
-		getOptionArg := func() string {
-			if len(parts) > 1 {
-				return parts[1]
-			}
-			if len(args) > i+1 {
-				i++
-				return args[i]
-			}
-			fail(fmt.Sprintf("%sMissing value for flag: %s", loc(), parts[0]))
-			return "" // make compiler happy
-		}
-		getBoolArg := func() bool {
-			if len(parts) > 1 {
-				val := strings.ToLower(parts[1])
-				switch val {
-				case "true":
-					return true
-				case "false":
-					return false
-				default:
-					fail(fmt.Sprintf("%svalue for option %s must be 'true' or 'false'", loc(), parts[0]))
-				}
-			}
-			return true
-		}
-		noOptionArg := func() {
-			if len(parts) > 1 {
-				fail(fmt.Sprintf("%s%s does not take a parameter", loc(), parts[0]))
-			}
-		}
-
-		switch parts[0] {
-		case "-I", "--proto_path":
-			opts.includePaths = append(opts.includePaths, getOptionArg())
-		case "--version":
-			noOptionArg()
-			fmt.Printf("%s %s\n", protocVersionEmu, gitSha)
-			os.Exit(0)
-		case "-h", "--help":
-			noOptionArg()
-			usage(0)
-		case "--encode":
-			opts.encodeType = getOptionArg()
-		case "--decode":
-			opts.decodeType = getOptionArg()
-		case "--decode_raw":
-			opts.decodeRaw = getBoolArg()
-		case "--descriptor_set_in":
-			opts.inputDescriptors = append(opts.inputDescriptors, getOptionArg())
-		case "-o", "--descriptor_set_out":
-			opts.outputDescriptor = getOptionArg()
-		case "--include_imports":
-			opts.includeImports = getBoolArg()
-		case "--include_source_info":
-			opts.includeSourceInfo = getBoolArg()
-		case "--print_free_field_numbers":
-			opts.printFreeFieldNumbers = getBoolArg()
-		case "--plugin":
-			plDef := strings.SplitN(getOptionArg(), "=", 2)
-			if len(plDef) == 0 {
-				return nil, fmt.Errorf("--plugin argument must not be blank")
-			}
-			var pluginName, pluginLocation string
-			if len(plDef) == 1 {
-				pluginName = filepath.Base(plDef[0])
-				pluginLocation = plDef[0]
-			} else {
-				pluginName = plDef[0]
-				pluginLocation = plDef[1]
-			}
-			if !strings.HasPrefix(pluginName, "protoc-gen-") {
-				return nil, fmt.Errorf("plugin name %s is not valid: name should have 'protoc-gen-' prefix", pluginName)
-			}
-			pluginName = pluginName[len("protoc-gen-"):]
-			opts.pluginDefs[pluginName] = pluginLocation
-		default:
-			switch {
-			case strings.HasPrefix(a, "@"):
-				noOptionArg()
-				source := a[1:]
-				if contents, err := ioutil.ReadFile(source); err != nil {
-					return nil, fmt.Errorf("%scould not load option file %s: %v", loc(), source, err)
-				} else {
-					lines := strings.Split(string(contents), "\n")
-					for i := range lines {
-						lines[i] = strings.TrimSpace(lines[i])
-					}
-					parseFlags(a[1:], lines, sourcesSeen)
-				}
-			case strings.HasPrefix(a, "--") && strings.HasSuffix(a, "_out"):
-				opts.output[a[2:len(a)-4]] = getOptionArg()
-			default:
-				return nil, fmt.Errorf("%sunrecognized option: %s", loc(), parts[0])
-			}
-		}
-	}
-	return &opts, nil
 }
 
 func fail(message string) {
-	fmt.Fprintln(os.Stderr, message)
+	_, _ = fmt.Fprintln(os.Stderr, message)
 	os.Exit(1)
 }
 
 func usage(exitCode int) {
-	// TODO
+	fmt.Printf(
+		`Usage: %s [OPTION] PROTO_FILES
+Parse PROTO_FILES and generate output based on the options given:
+  -IPATH, --proto_path=PATH   Specify the directory in which to search for
+                              imports.  May be specified multiple times;
+                              directories will be searched in order.  If not
+                              given, the current working directory is used.
+  --version                   Show version info and exit.
+  -h, --help                  Show this text and exit.
+  --encode=MESSAGE_TYPE       Read a text-format message of the given type
+                              from standard input and write it in binary
+                              to standard output.  The message type must
+                              be defined in PROTO_FILES or their imports.
+  --decode=MESSAGE_TYPE       Read a binary message of the given type from
+                              standard input and write it in text format
+                              to standard output.  The message type must
+                              be defined in PROTO_FILES or their imports.
+  --decode_raw                Read an arbitrary protocol message from
+                              standard input and write the raw tag/value
+                              pairs in text format to standard output.  No
+                              PROTO_FILES should be given when using this
+                              flag.
+  --descriptor_set_in=FILES   Specifies a delimited list of FILES
+                              each containing a FileDescriptorSet (a
+                              protocol buffer defined in descriptor.proto).
+                              The FileDescriptor for each of the PROTO_FILES
+                              provided will be loaded from these
+                              FileDescriptorSets. If a FileDescriptor
+                              appears multiple times, the first occurrence
+                              will be used.
+  -oFILE,                     Writes a FileDescriptorSet (a protocol buffer,
+    --descriptor_set_out=FILE defined in descriptor.proto) containing all of
+                              the input files to FILE.
+  --include_imports           When using --descriptor_set_out, also include
+                              all dependencies of the input files in the
+                              set, so that the set is self-contained.
+  --include_source_info       When using --descriptor_set_out, do not strip
+                              SourceCodeInfo from the FileDescriptorProto.
+                              This results in vastly larger descriptors that
+                              include information about the original
+                              location of each decl in the source file as
+                              well as surrounding comments.
+  --print_free_field_numbers  Print the free field numbers of the messages
+                              defined in the given proto files. Groups share
+                              the same field number space with the parent
+                              message. Extension ranges are counted as
+                              occupied fields numbers.
+  --plugin=EXECUTABLE         Specifies a plugin executable to use.
+                              Normally, protoc searches the PATH for
+                              plugins, but you may specify additional
+                              executables not in the path using this flag.
+                              Additionally, EXECUTABLE may be of the form
+                              NAME=PATH, in which case the given plugin name
+                              is mapped to the given executable even if
+                              the executable's own name differs.
+  --<PLUGIN>_out=OUT_DIR      Invokes the plugin named <PLUGIN>, instructing
+                              it to generate source code into the given
+                              OUT_DIR. The given OUT_DIR can be in the
+                              extended form ARGS:OUT_DIR, in which case ARGS
+                              are extra arguments/flags to pass to the
+                              plugin.
+                              The plugin binary is located by searching for
+                              for any plugin locations configured with
+                              --plugin flags. If no such flags were provided
+                              for the named plugin, then an executable named
+                              'protoc-gen-<PLUGIN>' is used.
+                              If the named plugin is 'cpp', 'csharp', 'java',
+                              'javanano', 'js', 'objc', 'php', 'python', or
+                              'ruby' then the protoc binary is used to
+                              generate the output code (instead of some
+                              plugin).
+  @<filename>                 Read options and filenames from file. If a
+                              relative file path is specified, the file
+                              will be searched in the working directory.
+                              The --proto_path option will not affect how
+                              this argument file is searched. Content of
+                              the file will be expanded in the position of
+                              @<filename> as in the argument list. Note
+                              that shell expansion is not applied to the
+                              content of the file (i.e., you cannot use
+                              quotes, wildcards, escapes, commands, etc.).
+                              Each line corresponds to a single argument,
+                              even if it contains spaces.
+`, os.Args[0])
 	os.Exit(exitCode)
 }
 
-func executePlugin(req *plugins.CodeGenRequest, resp *plugins.CodeGenResponse, opts *protocOptions, lang, outputArg string) error {
-	req.Args = strings.Split(outputArg, ",")
-	pluginName := opts.pluginDefs[lang]
-	if pluginName == "" {
-		if _, ok := protocOutputs[lang]; ok {
-			return driveProtocAsPlugin(req, resp, lang)
-		}
-		pluginName = "protoc-gen-" + lang
-	}
-	return plugins.Exec(context.Background(), pluginName, req, resp)
-}
-
-func driveProtocAsPlugin(req *plugins.CodeGenRequest, resp *plugins.CodeGenResponse, lang string) (err error) {
-	for _, arg := range req.Args {
-		if strings.HasPrefix(arg, "-") {
-			return fmt.Errorf("option %q for %s output does not start with '-'", arg, lang)
-		}
-	}
-
-	tmpDir, err := ioutil.TempDir("", "go-protoc")
-	if err != nil {
-		return err
-	}
-	defer func() {
-		cleanupErr := os.RemoveAll(tmpDir)
-		if err == nil {
-			err = cleanupErr
-		}
-	}()
-
-	outDir := filepath.Join(tmpDir, "output")
-	if err := os.Mkdir(outDir, 0777); err != nil {
-		return err
-	}
-
-	fds := desc.ToFileDescriptorSet(req.Files...)
-	descFile := filepath.Join(tmpDir, "descriptors")
-	if fdsBytes, err := proto.Marshal(fds); err != nil {
-		return err
-	} else if err := ioutil.WriteFile(descFile, fdsBytes, 0666); err != nil {
-		return err
-	}
-
-	args := make([]string, 2+len(req.Files)+len(req.Args))
-	args[0] = "--descriptor_set_in=" + descFile
-	args[1] = "--" + lang + "_out=" + outDir
-	for i, arg := range req.Args {
-		args[i+2] = arg
-	}
-	for i, f := range req.Files {
-		args[i+2+len(req.Args)] = f.GetName()
-	}
-
-	cmd := exec.Command("protoc", args...)
-	var combinedOutput bytes.Buffer
-	cmd.Stdout = &combinedOutput
-	cmd.Stderr = &combinedOutput
-	if err := cmd.Run(); err != nil {
-		if err, ok := err.(*exec.ExitError); ok {
-			return fmt.Errorf("protoc failed to produce output for %s: %v\n%s", lang, err, combinedOutput.String())
-		}
-		return err
-	}
-
-	return filepath.Walk(outDir, func(path string, info os.FileInfo, err error) error {
+func loadDescriptors(descFileNames []string, inputProtoFiles []string) ([]*desc.FileDescriptor, error) {
+	allFiles := map[string]*descriptor.FileDescriptorProto{}
+	for _, fileName := range descFileNames {
+		d, err := ioutil.ReadFile(fileName)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		if (info.Mode() & os.ModeType) != 0 {
-			// not a regular file
-			return nil
+		var set descriptor.FileDescriptorSet
+		if err := proto.Unmarshal(d, &set); err != nil {
+			return nil, fmt.Errorf("file %q is not a valid file descriptor set: %v", fileName, err)
 		}
-		relPath, err := filepath.Rel(outDir, path)
-		if err != nil {
-			return err
+		for _, fd := range set.File {
+			if _, ok := allFiles[fd.GetName()]; !ok {
+				// only load into allFiles map if not already present: we keep
+				// only the first file found for a given name
+				allFiles[fd.GetName()] = fd
+			}
 		}
-		in, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		out := resp.OutputFile(relPath)
-		_, err = io.Copy(out, in)
-		return err
-	})
-}
-
-var insertionPointMarker = []byte("@@protoc_insertion_point(")
-
-type insertedContent struct {
-	data io.Reader
-	lang string
-}
-
-func applyInsertions(contents io.Reader, insertions map[string][]insertedContent) (io.Reader, error) {
-	var result bytes.Buffer
-
-	var data []byte
-	type toBytes interface {
-		Bytes() []byte
 	}
-	if b, ok := contents.(toBytes); ok {
-		data = b.Bytes()
-	} else {
+	result := make([]*desc.FileDescriptor, len(inputProtoFiles))
+	linked := map[string]*desc.FileDescriptor{}
+	for i, protoName := range inputProtoFiles {
+		if _, ok := allFiles[protoName]; !ok {
+			return nil, fmt.Errorf("file not found: %q", protoName)
+		}
 		var err error
-		data, err = ioutil.ReadAll(contents)
+		result[i], err = linkFile(protoName, allFiles, linked, nil)
+		if err != nil {
+			return nil, fmt.Errorf("could not load %q: %v", protoName, err)
+		}
+	}
+	return result, nil
+}
+
+func linkFile(fileName string, fds map[string]*descriptor.FileDescriptorProto, linkedFds map[string]*desc.FileDescriptor, seen []string) (*desc.FileDescriptor, error) {
+	for _, name := range seen {
+		if fileName == name {
+			seen = append(seen, fileName)
+			return nil, fmt.Errorf("cyclic imports: %v", strings.Join(seen, " -> "))
+		}
+	}
+	seen = append(seen, fileName)
+	fd, ok := linkedFds[fileName]
+	if ok {
+		return fd, nil
+	}
+	fdUnlinked, ok := fds[fileName]
+	if !ok {
+		return nil, fmt.Errorf("could not find dependency %q", fileName)
+	}
+	deps := make([]*desc.FileDescriptor, len(fdUnlinked.Dependency))
+	for i, dep := range fdUnlinked.Dependency {
+		var err error
+		deps[i], err = linkFile(dep, fds, linkedFds, seen)
 		if err != nil {
 			return nil, err
 		}
 	}
+	fd, err := desc.CreateFileDescriptor(fdUnlinked, deps...)
+	if err == nil {
+		linkedFds[fileName] = fd
+	}
+	return fd, err
+}
 
-	for {
-		pos := bytes.Index(data, insertionPointMarker)
-		if pos < 0 {
-			break
-		}
-		startPos := pos + len(insertionPointMarker)
-		endPos := bytes.IndexByte(data[startPos:], ')')
-		if endPos < 0 {
-			// malformed marker! skip it
-			break
-		}
-		point := string(data[startPos:endPos])
-		insertedData := insertions[point]
-		if len(insertedData) == 0 {
-			result.Write(data[:endPos+1])
-			data = data[endPos+1:]
-			continue
-		}
+func saveDescriptor(dest string, fds []*desc.FileDescriptor, includeImports, includeSourceInfo bool) error {
+	fdsByName := map[string]*descriptor.FileDescriptorProto{}
+	var fdSet descriptor.FileDescriptorSet
+	for _, fd := range fds {
+		toFileDescriptorSet(fdsByName, &fdSet, fd, includeImports, includeSourceInfo)
+	}
+	if b, err := proto.Marshal(&fdSet); err != nil {
+		return err
+	} else {
+		return ioutil.WriteFile(dest, b, 0666)
+	}
+}
 
-		delete(insertions, point)
-
-		prevLine := bytes.LastIndexByte(data[:pos], '\n')
-		prevComment := bytes.LastIndexByte(data[prevLine+1:pos], '/')
-		var insertionIndex int
-		var sep, indent []byte
-		if prevComment != -1 &&
-			data[prevLine+1+prevComment+1] == '*' &&
-			len(bytes.TrimSpace(data[prevLine+1+prevComment+2:pos])) == 0 {
-			// insertion point preceded by "/* ", so we insert directly before
-			// that with no indentation
-			insertionIndex = prevLine + 1 + prevComment
-			sep = []byte{' '}
-		} else {
-			// otherwise, insert before the insertion point line, using same
-			// indent as observed on insertion point line
-			insertionIndex = prevLine + 1
-			sep = []byte{'\n'}
-			line := data[insertionIndex:pos]
-			trimmedLine := bytes.TrimLeftFunc(line, unicode.IsSpace)
-			if len(line) > len(trimmedLine) {
-				indent = line[:len(line)-len(trimmedLine)]
-			}
-		}
-
-		result.Write(data[:insertionIndex])
-		for _, ins := range insertedData {
-			if len(indent) == 0 {
-				if _, err := io.Copy(&result, ins.data); err != nil {
-					return nil, err
-				}
-			} else {
-				// if there's an indent, break up the inserted data
-				// into lines and prefix each line with the indent
-				insData, err := ioutil.ReadAll(ins.data)
-				if err != nil {
-					return nil, err
-				}
-				lines := bytes.Split(insData, []byte{'\n'})
-				for _, line := range lines {
-					result.Write(indent)
-					result.Write(line)
-				}
-			}
-
-			if !bytes.HasSuffix(result.Bytes(), sep) {
-				result.Write(sep)
-			}
-		}
-		result.Write(data[insertionIndex : endPos+1])
-		data = data[endPos+1:]
+func toFileDescriptorSet(resultMap map[string]*descriptor.FileDescriptorProto, fdSet *descriptor.FileDescriptorSet, fd *desc.FileDescriptor, includeImports, includeSourceInfo bool) {
+	if _, ok := resultMap[fd.GetName()]; ok {
+		// already done this one
+		return
 	}
 
-	if len(insertions) > 0 {
-		// TODO: fail with missing insertion points
-		_ = 0
+	if includeImports {
+		for _, dep := range fd.GetDependencies() {
+			toFileDescriptorSet(resultMap, fdSet, dep, includeImports, includeSourceInfo)
+		}
+	}
+	fdp := fd.AsFileDescriptorProto()
+	if !includeSourceInfo {
+		// NB: this is destructive, so we need to do this step (part of saving
+		// to output descriptor set file) last, *after* descriptors (and any
+		// source code info) have already been used to do code gen
+		fdp.SourceCodeInfo = nil
 	}
 
-	result.Write(data)
-	return &result, nil
+	resultMap[fd.GetName()] = fdp
+	fdSet.File = append(fdSet.File, fdp)
 }
