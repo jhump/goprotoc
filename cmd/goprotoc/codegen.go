@@ -318,8 +318,8 @@ func applyInsertions(fileName string, contents io.Reader, insertions map[string]
 				points[p] = struct{}{}
 			}
 		}
-		var sb strings.Builder
-		_, _ = fmt.Fprintf(&sb, "missing insertion point(s) in %q: ", fileName)
+		var buf bytes.Buffer
+		_, _ = fmt.Fprintf(&buf, "missing insertion point(s) in %q: ", fileName)
 		first := true
 		for lang, points := range pointsByLang {
 			pointSlice := make([]string, 0, len(points))
@@ -329,12 +329,12 @@ func applyInsertions(fileName string, contents io.Reader, insertions map[string]
 			if first {
 				first = false
 			} else {
-				sb.WriteString("; ")
+				buf.WriteString("; ")
 			}
-			_, _ = fmt.Fprintf(&sb, "%q wants to insert into %s", lang, strings.Join(pointSlice, ","))
+			_, _ = fmt.Fprintf(&buf, "%q wants to insert into %s", lang, strings.Join(pointSlice, ","))
 		}
 
-		return nil, errors.New(sb.String())
+		return nil, errors.New(buf.String())
 	}
 
 	result.Write(data)
