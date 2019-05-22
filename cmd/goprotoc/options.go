@@ -139,8 +139,11 @@ func parseFlags(source string, args []string, opts *protocOptions, sourcesSeen m
 						return err
 					}
 				}
-			case strings.HasPrefix(a, "--") && strings.HasSuffix(a, "_out"):
-				opts.output[a[2:len(a)-4]] = getOptionArg()
+			case strings.HasPrefix(parts[0], "--") && strings.HasSuffix(parts[0], "_out"):
+				if opts.output == nil {
+					opts.output = make(map[string]string, 1)
+				}
+				opts.output[parts[0][2:len(parts[0])-4]] = getOptionArg()
 			default:
 				return fmt.Errorf("%sunrecognized option: %s", loc(), parts[0])
 			}

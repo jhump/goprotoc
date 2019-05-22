@@ -107,10 +107,27 @@ func doCodeGen(outputs map[string]string, fds []*desc.FileDescriptor, pluginDefs
 		}
 		w, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 		if err != nil {
+			if os.IsNotExist(err) {
+				// The file does not have to exist since we pass o.O_CREATE but the above
+				// open can return error if the directory does not exist, and protoc
+				// makes all necessary subdirectories as part of generation.
+				if err := os.MkdirAll(filepath.Dir(fileName), 0755); err != nil {
+					return err
+				}
+				// Try again after making the directory.
+				w, err = os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+				if err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
+		}
+		if _, err := io.Copy(w, fileContents); err != nil {
+			_ = w.Close()
 			return err
 		}
-		_, err = io.Copy(w, fileContents)
-		if err != nil {
+		if err := w.Close(); err != nil {
 			return err
 		}
 	}
@@ -166,14 +183,18 @@ func driveProtocAsPlugin(req *plugins.CodeGenRequest, resp *plugins.CodeGenRespo
 		return err
 	}
 
-	args := make([]string, 2+len(req.Files)+len(req.Args))
-	args[0] = "--descriptor_set_in=" + descFile
-	args[1] = "--" + lang + "_out=" + outDir
-	for i, arg := range req.Args {
-		args[i+2] = arg
+	args := make([]string, 0, 2+len(req.Files)+len(req.Args))
+	args = append(args, "--descriptor_set_in="+descFile)
+	args = append(args, "--"+lang+"_out="+outDir)
+	for _, arg := range req.Args {
+		if arg != "" {
+			args = append(args, arg)
+		}
 	}
-	for i, f := range req.Files {
-		args[i+2+len(req.Args)] = f.GetName()
+	for _, f := range req.Files {
+		if name := f.GetName(); name != "" {
+			args = append(args, name)
+		}
 	}
 
 	cmd := exec.Command("protoc", args...)
@@ -204,8 +225,11 @@ func driveProtocAsPlugin(req *plugins.CodeGenRequest, resp *plugins.CodeGenRespo
 			return err
 		}
 		out := resp.OutputFile(relPath)
-		_, err = io.Copy(out, in)
-		return err
+		if _, err := io.Copy(out, in); err != nil {
+			_ = in.Close()
+			return err
+		}
+		return in.Close()
 	})
 }
 
