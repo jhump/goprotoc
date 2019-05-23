@@ -346,9 +346,8 @@ func resolveLocations(conf *effectiveConfig) error {
 			if stat, err := os.Stat(plConf.Location); err != nil {
 				if os.IsNotExist(err) {
 					return fmt.Errorf("%s: configured location does not exist: %s", plName, plConf.Location)
-				} else {
-					return fmt.Errorf("%s: failed to stat location: %v", plName, err)
 				}
+				return fmt.Errorf("%s: failed to stat location: %v", plName, err)
 			} else if stat.IsDir() {
 				loc, err := findInPath(plName, []string{plConf.Location}, false)
 				if err != nil {

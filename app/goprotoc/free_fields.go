@@ -21,7 +21,9 @@ func doPrintFreeFieldNumbers(fds []*desc.FileDescriptor, w io.Writer) error {
 
 func printMessageFreeFields(md *desc.MessageDescriptor, w io.Writer) error {
 	for _, nested := range md.GetNestedMessageTypes() {
-		printMessageFreeFields(nested, w)
+		if err := printMessageFreeFields(nested, w); err != nil {
+			return err
+		}
 	}
 
 	unused := computeFreeRanges(md)

@@ -90,7 +90,9 @@ func parseFlags(source string, programName string, args []string, stdout io.Writ
 			if err := noOptionArg(); err != nil {
 				return err
 			}
-			fmt.Fprintf(stdout, "%s %s\n", protocVersionEmu, gitSha)
+			if _, err := fmt.Fprintf(stdout, "%s %s\n", protocVersionEmu, gitSha); err != nil {
+				return err
+			}
 			return errVersion
 		case "-h", "--help":
 			if err := noOptionArg(); err != nil {
@@ -177,16 +179,16 @@ func parseFlags(source string, programName string, args []string, stdout io.Writ
 					return err
 				}
 				source := a[1:]
-				if contents, err := ioutil.ReadFile(source); err != nil {
+				contents, err := ioutil.ReadFile(source)
+				if err != nil {
 					return fmt.Errorf("%scould not load option file %s: %v", loc(), source, err)
-				} else {
-					lines := strings.Split(string(contents), "\n")
-					for i := range lines {
-						lines[i] = strings.TrimSpace(lines[i])
-					}
-					if err := parseFlags(a[1:], programName, lines, stdout, opts, sourcesSeen); err != nil {
-						return err
-					}
+				}
+				lines := strings.Split(string(contents), "\n")
+				for i := range lines {
+					lines[i] = strings.TrimSpace(lines[i])
+				}
+				if err := parseFlags(a[1:], programName, lines, stdout, opts, sourcesSeen); err != nil {
+					return err
 				}
 			case strings.HasPrefix(parts[0], "--") && strings.HasSuffix(parts[0], "_out"):
 				if opts.output == nil {

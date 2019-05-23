@@ -1,5 +1,5 @@
 .PHONY: default
-default: deps checkgofmt vet predeclared staticcheck ineffassign golint test
+default: deps checkgofmt vet predeclared staticcheck ineffassign errcheck golint golint test
 
 .PHONY: deps
 deps:
@@ -29,13 +29,10 @@ checkgofmt:
 vet:
 	go vet ./...
 
-# Check ST1005 checks that error strings are not capitalized
-# We want to allow this
-
 .PHONY: staticcheck
 staticcheck:
 	@go get honnef.co/go/tools/cmd/staticcheck
-	staticcheck -checks 'all -ST1005' ./...
+	staticcheck ./...
 
 .PHONY: ineffassign
 ineffassign:
@@ -47,17 +44,15 @@ predeclared:
 	@go get github.com/nishanths/predeclared
 	predeclared .
 
-# Intentionally omitted from CI, but target here for ad-hoc reports.
 .PHONY: golint
 golint:
 	@go get golang.org/x/lint/golint
-	golint -min_confidence 0.9 -set_exit_status ./
+	golint -min_confidence 0.9 -set_exit_status ./...
 
-# Intentionally omitted from CI, but target here for ad-hoc reports.
 .PHONY: errcheck
 errcheck:
 	@go get github.com/kisielk/errcheck
-	errcheck ./
+	errcheck ./...
 
 .PHONY: test
 test:

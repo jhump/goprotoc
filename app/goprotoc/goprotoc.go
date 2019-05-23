@@ -51,12 +51,15 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) err
 	}
 
 	if len(opts.inputDescriptors) > 0 && len(opts.includePaths) > 0 {
+		//lint:ignore ST1005 command return value
 		return errors.New("Only one of --descriptor_set_in and --proto_path can be specified.")
 	}
 
 	if len(opts.protoFiles) == 0 && !opts.decodeRaw {
+		//lint:ignore ST1005 command return value
 		return errors.New("Missing input file.")
 	} else if len(opts.protoFiles) > 0 && opts.decodeRaw {
+		//lint:ignore ST1005 command return value
 		return errors.New("When using --decode_raw, no input files should be given.")
 	}
 
@@ -93,12 +96,15 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) err
 
 	doingCodeGen := len(opts.output) > 0 || opts.outputDescriptor != ""
 	if doingCodeGen && opts.encodeType != "" {
+		//lint:ignore ST1005 command return value
 		return errors.New("Cannot use --encode and generate code or descriptors at the same time.")
 	}
 	if doingCodeGen && (opts.decodeType != "" || opts.decodeRaw) {
+		//lint:ignore ST1005 command return value
 		return errors.New("Cannot use --decode and generate code or descriptors at the same time.")
 	}
 	if opts.encodeType != "" && (opts.decodeType != "" || opts.decodeRaw) {
+		//lint:ignore ST1005 command return value
 		return errors.New("Only one of --encode and --decode can be specified.")
 	}
 
@@ -114,6 +120,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) err
 		err = doPrintFreeFieldNumbers(fds, stdout)
 	default:
 		if !doingCodeGen {
+			//lint:ignore ST1005 command return value
 			return errors.New("Missing output directives.")
 		}
 		if len(opts.output) > 0 {
@@ -286,11 +293,11 @@ func saveDescriptor(dest string, fds []*desc.FileDescriptor, includeImports, inc
 	for _, fd := range fds {
 		toFileDescriptorSet(fdsByName, &fdSet, fd, includeImports, includeSourceInfo)
 	}
-	if b, err := proto.Marshal(&fdSet); err != nil {
+	b, err := proto.Marshal(&fdSet)
+	if err != nil {
 		return err
-	} else {
-		return ioutil.WriteFile(dest, b, 0666)
 	}
+	return ioutil.WriteFile(dest, b, 0666)
 }
 
 func toFileDescriptorSet(resultMap map[string]*descriptor.FileDescriptorProto, fdSet *descriptor.FileDescriptorSet, fd *desc.FileDescriptor, includeImports, includeSourceInfo bool) {
