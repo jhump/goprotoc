@@ -56,9 +56,18 @@ func main() {
 				fail(err.Error())
 			}
 		} else {
+			includeSourceInfo := opts.includeSourceInfo
+			// We have to pass SourceCodeInfo to plugins as they expect this information to generate comments.
+			// This is true for the builtin protoc plugins as well.
+			// We could instead do a separate Parse if we wanted but the logic gets very complicated
+			// As we would want to make sure we are ONLY outputting to plugins and nothing else
+			// So that we don't have to parse twice in the general case.
+			if len(opts.output) > 0 {
+				includeSourceInfo = true
+			}
 			p := protoparse.Parser{
 				ImportPaths:           opts.includePaths,
-				IncludeSourceCodeInfo: opts.includeSourceInfo,
+				IncludeSourceCodeInfo: includeSourceInfo,
 			}
 			var err error
 			if opts.protoFiles, err = protoparse.ResolveFilenames(opts.includePaths, opts.protoFiles...); err != nil {

@@ -56,6 +56,26 @@ func doCodeGen(outputs map[string]string, fds []*desc.FileDescriptor, pluginDefs
 		} else {
 			locations[lang] = loc
 		}
+		// Protoc expects the base output directories to already exist
+		// so we make the same check here.
+		dirPath := locations[lang]
+		// This should have been validated as part of flag parsing but
+		// this double checks.
+		if dirPath == "" {
+			return fmt.Errorf("%s has no output path", dirPath)
+		}
+		// Protoc has special exceptions for .jar and .zip however.
+		// https://github.com/protocolbuffers/protobuf/blob/6dc9832aab87dfdbb1c7b008f4596184e1fd8105/src/google/protobuf/compiler/command_line_interface.cc#L894
+		if ext := filepath.Ext(dirPath); ext == ".jar" || ext == ".zip" {
+			dirPath = filepath.Dir(dirPath)
+		}
+		fileInfo, err := os.Stat(dirPath)
+		if err != nil {
+			return err
+		}
+		if !fileInfo.IsDir() {
+			return fmt.Errorf("%s is not a directory", dirPath)
+		}
 		pluginName := pluginDefs[lang]
 		if err := executePlugin(&req, resp, pluginName, lang, arg); err != nil {
 			return err
@@ -105,12 +125,21 @@ func doCodeGen(outputs map[string]string, fds []*desc.FileDescriptor, pluginDefs
 				return err
 			}
 		}
+		// The file does not have to exist since we pass o.O_CREATE but the
+		// OpenFile can return error if the directory does not exist, and protoc
+		// makes all necessary subdirectories as part of generation.
+		if err := os.MkdirAll(filepath.Dir(fileName), 0755); err != nil {
+			return err
+		}
 		w, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 		if err != nil {
 			return err
 		}
-		_, err = io.Copy(w, fileContents)
-		if err != nil {
+		if _, err := io.Copy(w, fileContents); err != nil {
+			_ = w.Close()
+			return err
+		}
+		if err := w.Close(); err != nil {
 			return err
 		}
 	}
@@ -166,14 +195,21 @@ func driveProtocAsPlugin(req *plugins.CodeGenRequest, resp *plugins.CodeGenRespo
 		return err
 	}
 
-	args := make([]string, 2+len(req.Files)+len(req.Args))
-	args[0] = "--descriptor_set_in=" + descFile
-	args[1] = "--" + lang + "_out=" + outDir
-	for i, arg := range req.Args {
-		args[i+2] = arg
+	args := make([]string, 0, 2+len(req.Files)+len(req.Args))
+	args = append(args, "--descriptor_set_in="+descFile)
+	args = append(args, "--"+lang+"_out="+outDir)
+	for _, arg := range req.Args {
+		if arg == "" {
+			return errors.New("request argument is empty")
+		}
+		args = append(args, arg)
 	}
-	for i, f := range req.Files {
-		args[i+2+len(req.Args)] = f.GetName()
+	for _, f := range req.Files {
+		name := f.GetName()
+		if name == "" {
+			return errors.New("request filename empty")
+		}
+		args = append(args, name)
 	}
 
 	cmd := exec.Command("protoc", args...)
@@ -204,8 +240,11 @@ func driveProtocAsPlugin(req *plugins.CodeGenRequest, resp *plugins.CodeGenRespo
 			return err
 		}
 		out := resp.OutputFile(relPath)
-		_, err = io.Copy(out, in)
-		return err
+		if _, err := io.Copy(out, in); err != nil {
+			_ = in.Close()
+			return err
+		}
+		return in.Close()
 	})
 }
 
