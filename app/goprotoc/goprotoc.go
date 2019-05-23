@@ -31,9 +31,11 @@ func Main() {
 // Run runs the program and returns the exit code.
 func Run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	if err := run(args, stdin, stdout, stderr); err != nil {
-		if message := err.Error(); message != "" {
-			_, _ = fmt.Fprintln(stderr, message)
+		message := err.Error()
+		if message == "" {
+			message = "unexpected error"
 		}
+		_, _ = fmt.Fprintln(stderr, message)
 		return 1
 	}
 	return 0
