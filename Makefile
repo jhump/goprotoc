@@ -1,5 +1,5 @@
 .PHONY: default
-default: deps checkgofmt vet predeclared staticcheck ineffassign golint test
+default: deps checkgofmt vet predeclared staticcheck ineffassign errcheck golint golint test
 
 .PHONY: deps
 deps:
@@ -44,17 +44,15 @@ predeclared:
 	@go get github.com/nishanths/predeclared
 	predeclared .
 
-# Intentionally omitted from CI, but target here for ad-hoc reports.
 .PHONY: golint
 golint:
 	@go get golang.org/x/lint/golint
-	golint -min_confidence 0.9 -set_exit_status ./
+	golint -min_confidence 0.9 -set_exit_status ./...
 
-# Intentionally omitted from CI, but target here for ad-hoc reports.
 .PHONY: errcheck
 errcheck:
 	@go get github.com/kisielk/errcheck
-	errcheck ./
+	errcheck ./...
 
 .PHONY: test
 test:

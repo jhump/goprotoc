@@ -263,6 +263,7 @@ func (n *GoNames) GoTypeOfField(fld *desc.FieldDescriptor) gopoet.TypeName {
 	})
 }
 
+// GoTypeOfFieldAccessor returns the Go type of the given field accessor.
 func (n *GoNames) GoTypeOfFieldAccessor(fld *desc.FieldDescriptor) gopoet.TypeName {
 	return n.getOrComputeType(typeKey{d: fld, k: typeKeyAccessor}, func() {
 		n.computeTypeOfFieldLocked(fld)
@@ -429,10 +430,12 @@ func (n *GoNames) GoTypeForStreamServerImpl(md *desc.MethodDescriptor) string {
 	})
 }
 
+// GoTypeOfRequest returns the Go type of the request.
 func (n *GoNames) GoTypeOfRequest(md *desc.MethodDescriptor) gopoet.TypeName {
 	return gopoet.PointerType(n.GoTypeForMessage(md.GetInputType()))
 }
 
+// GoTypeOfResponse returns the Go type of the response.
 func (n *GoNames) GoTypeOfResponse(md *desc.MethodDescriptor) gopoet.TypeName {
 	return gopoet.PointerType(n.GoTypeForMessage(md.GetOutputType()))
 }

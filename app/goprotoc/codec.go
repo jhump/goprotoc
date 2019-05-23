@@ -1,4 +1,4 @@
-package main
+package goprotoc
 
 import (
 	"bytes"
@@ -123,44 +123,62 @@ func decodeRawMessage(in *codedReader, w io.Writer, indent string, inGroup bool)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(w, "%s%d: %d\n", indent, t, v)
+			if _, err := fmt.Fprintf(w, "%s%d: %d\n", indent, t, v); err != nil {
+				return err
+			}
 		case proto.WireFixed32:
 			v, err := in.decodeFixed32()
 			if err != nil {
 				return err
 			}
 			f := math.Float32frombits(uint32(v))
-			fmt.Fprintf(w, "%s%d: %f\n", indent, t, f)
+			if _, err := fmt.Fprintf(w, "%s%d: %f\n", indent, t, f); err != nil {
+				return err
+			}
 		case proto.WireFixed64:
 			v, err := in.decodeFixed64()
 			if err != nil {
 				return err
 			}
 			f := math.Float64frombits(v)
-			fmt.Fprintf(w, "%s%d: %f\n", indent, t, f)
+			if _, err := fmt.Fprintf(w, "%s%d: %f\n", indent, t, f); err != nil {
+				return err
+			}
 		case proto.WireBytes:
 			v, err := in.decodeRawBytes(false)
 			if err != nil {
 				return err
 			}
 			if isProbablyMessage(v) {
-				fmt.Fprintf(w, "%s%d: <\n", indent, t)
+				if _, err := fmt.Fprintf(w, "%s%d: <\n", indent, t); err != nil {
+					return err
+				}
 				nested := newCodedReader(v)
 				if err := decodeRawMessage(nested, w, indent+"  ", false); err != nil {
 					return err
 				}
-				fmt.Fprintf(w, "%s>\n", indent)
+				if _, err := fmt.Fprintf(w, "%s>\n", indent); err != nil {
+					return err
+				}
 			} else if isProbablyString(v) {
-				fmt.Fprintf(w, "%s%d: %s\n", indent, t, quoteString(v))
+				if _, err := fmt.Fprintf(w, "%s%d: %s\n", indent, t, quoteString(v)); err != nil {
+					return err
+				}
 			} else {
-				fmt.Fprintf(w, "%s%d: %s\n", indent, t, quoteBytes(v))
+				if _, err := fmt.Fprintf(w, "%s%d: %s\n", indent, t, quoteBytes(v)); err != nil {
+					return err
+				}
 			}
 		case proto.WireStartGroup:
-			fmt.Fprintf(w, "%s%d {\n", indent, t)
+			if _, err := fmt.Fprintf(w, "%s%d {\n", indent, t); err != nil {
+				return err
+			}
 			if err := decodeRawMessage(in, w, indent+"  ", true); err != nil {
 				return err
 			}
-			fmt.Fprintf(w, "%s}\n", indent)
+			if _, err := fmt.Fprintf(w, "%s}\n", indent); err != nil {
+				return err
+			}
 		default:
 			// invalid wire type
 			return fmt.Errorf("input contained invalid wire type: %d", wt)
