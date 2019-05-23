@@ -154,7 +154,9 @@ type fileOutput struct {
 }
 
 func executePlugin(req *plugins.CodeGenRequest, resp *plugins.CodeGenResponse, pluginName, lang, outputArg string) error {
-	req.Args = strings.Split(outputArg, ",")
+	if len(outputArg) > 0 {
+		req.Args = strings.Split(outputArg, ",")
+	}
 	if pluginName == "" {
 		if _, ok := protocOutputs[lang]; ok {
 			return driveProtocAsPlugin(req, resp, lang)
