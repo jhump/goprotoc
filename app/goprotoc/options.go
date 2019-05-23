@@ -1,9 +1,9 @@
-package main
+package goprotoc
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -23,7 +23,7 @@ type protocOptions struct {
 	protoFiles            []string
 }
 
-func parseFlags(source string, args []string, opts *protocOptions, sourcesSeen map[string]struct{}) error {
+func parseFlags(source string, programName string, args []string, stdout io.Writer, opts *protocOptions, sourcesSeen map[string]struct{}) error {
 	if _, ok := sourcesSeen[source]; ok {
 		return fmt.Errorf("cycle detected in option files: %s references itself (possibly indirectly)", source)
 	}
@@ -48,65 +48,110 @@ func parseFlags(source string, args []string, opts *protocOptions, sourcesSeen m
 		}
 		parts := strings.SplitN(args[i], "=", 2)
 
-		getOptionArg := func() string {
+		getOptionArg := func() (string, error) {
 			if len(parts) > 1 {
-				return parts[1]
+				return parts[1], nil
 			}
 			if len(args) > i+1 {
 				i++
-				return args[i]
+				return args[i], nil
 			}
-			fail(fmt.Sprintf("%sMissing value for flag: %s", loc(), parts[0]))
-			return "" // make compiler happy
+			return "", fmt.Errorf("%sMissing value for flag: %s", loc(), parts[0])
 		}
-		getBoolArg := func() bool {
+		getBoolArg := func() (bool, error) {
 			if len(parts) > 1 {
 				val := strings.ToLower(parts[1])
 				switch val {
 				case "true":
-					return true
+					return true, nil
 				case "false":
-					return false
+					return false, nil
 				default:
-					fail(fmt.Sprintf("%svalue for option %s must be 'true' or 'false'", loc(), parts[0]))
+					return false, fmt.Errorf("%svalue for option %s must be 'true' or 'false'", loc(), parts[0])
 				}
 			}
-			return true
+			return true, nil
 		}
-		noOptionArg := func() {
+		noOptionArg := func() error {
 			if len(parts) > 1 {
-				fail(fmt.Sprintf("%s%s does not take a parameter", loc(), parts[0]))
+				return fmt.Errorf("%s%s does not take a parameter", loc(), parts[0])
 			}
+			return nil
 		}
 
 		switch parts[0] {
 		case "-I", "--proto_path":
-			opts.includePaths = append(opts.includePaths, getOptionArg())
+			value, err := getOptionArg()
+			if err != nil {
+				return err
+			}
+			opts.includePaths = append(opts.includePaths, value)
 		case "--version":
-			noOptionArg()
-			fmt.Printf("%s %s\n", protocVersionEmu, gitSha)
-			os.Exit(0)
+			if err := noOptionArg(); err != nil {
+				return err
+			}
+			fmt.Fprintf(stdout, "%s %s\n", protocVersionEmu, gitSha)
+			return errVersion
 		case "-h", "--help":
-			noOptionArg()
-			usage(0)
+			if err := noOptionArg(); err != nil {
+				return err
+			}
+			usage(programName, stdout)
+			return errUsage
 		case "--encode":
-			opts.encodeType = getOptionArg()
+			value, err := getOptionArg()
+			if err != nil {
+				return err
+			}
+			opts.encodeType = value
 		case "--decode":
-			opts.decodeType = getOptionArg()
+			value, err := getOptionArg()
+			if err != nil {
+				return err
+			}
+			opts.decodeType = value
 		case "--decode_raw":
-			opts.decodeRaw = getBoolArg()
+			value, err := getBoolArg()
+			if err != nil {
+				return err
+			}
+			opts.decodeRaw = value
 		case "--descriptor_set_in":
-			opts.inputDescriptors = append(opts.inputDescriptors, getOptionArg())
+			value, err := getOptionArg()
+			if err != nil {
+				return err
+			}
+			opts.inputDescriptors = append(opts.inputDescriptors, value)
 		case "-o", "--descriptor_set_out":
-			opts.outputDescriptor = getOptionArg()
+			value, err := getOptionArg()
+			if err != nil {
+				return err
+			}
+			opts.outputDescriptor = value
 		case "--include_imports":
-			opts.includeImports = getBoolArg()
+			value, err := getBoolArg()
+			if err != nil {
+				return err
+			}
+			opts.includeImports = value
 		case "--include_source_info":
-			opts.includeSourceInfo = getBoolArg()
+			value, err := getBoolArg()
+			if err != nil {
+				return err
+			}
+			opts.includeSourceInfo = value
 		case "--print_free_field_numbers":
-			opts.printFreeFieldNumbers = getBoolArg()
+			value, err := getBoolArg()
+			if err != nil {
+				return err
+			}
+			opts.printFreeFieldNumbers = value
 		case "--plugin":
-			plDef := strings.SplitN(getOptionArg(), "=", 2)
+			value, err := getOptionArg()
+			if err != nil {
+				return err
+			}
+			plDef := strings.SplitN(value, "=", 2)
 			if len(plDef) == 0 {
 				return fmt.Errorf("--plugin argument must not be blank")
 			}
@@ -126,7 +171,9 @@ func parseFlags(source string, args []string, opts *protocOptions, sourcesSeen m
 		default:
 			switch {
 			case strings.HasPrefix(a, "@"):
-				noOptionArg()
+				if err := noOptionArg(); err != nil {
+					return err
+				}
 				source := a[1:]
 				if contents, err := ioutil.ReadFile(source); err != nil {
 					return fmt.Errorf("%scould not load option file %s: %v", loc(), source, err)
@@ -135,7 +182,7 @@ func parseFlags(source string, args []string, opts *protocOptions, sourcesSeen m
 					for i := range lines {
 						lines[i] = strings.TrimSpace(lines[i])
 					}
-					if err := parseFlags(a[1:], lines, opts, sourcesSeen); err != nil {
+					if err := parseFlags(a[1:], programName, lines, stdout, opts, sourcesSeen); err != nil {
 						return err
 					}
 				}
@@ -143,7 +190,11 @@ func parseFlags(source string, args []string, opts *protocOptions, sourcesSeen m
 				if opts.output == nil {
 					opts.output = make(map[string]string, 1)
 				}
-				opts.output[parts[0][2:len(parts[0])-4]] = getOptionArg()
+				value, err := getOptionArg()
+				if err != nil {
+					return err
+				}
+				opts.output[parts[0][2:len(parts[0])-4]] = value
 			default:
 				return fmt.Errorf("%sunrecognized option: %s", loc(), parts[0])
 			}

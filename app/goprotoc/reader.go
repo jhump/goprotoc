@@ -1,4 +1,4 @@
-package main
+package goprotoc
 
 import (
 	"errors"
@@ -10,8 +10,8 @@ import (
 	"github.com/golang/protobuf/proto"
 )
 
-// ErrOverflow is returned when an integer is too large to be represented.
-var ErrOverflow = errors.New("proto: integer overflow")
+// errOverflow is returned when an integer is too large to be represented.
+var errOverflow = errors.New("proto: integer overflow")
 
 type codedReader struct {
 	buf   []byte
@@ -54,7 +54,7 @@ func (cb *codedReader) decodeVarintSlow() (x uint64, err error) {
 	}
 
 	// The number is too large to represent in a 64-bit value.
-	err = ErrOverflow
+	err = errOverflow
 	return
 }
 
@@ -152,7 +152,7 @@ func (cb *codedReader) decodeVarint() (uint64, error) {
 	}
 	// x -= 0x80 << 63 // Always zero.
 
-	return 0, ErrOverflow
+	return 0, errOverflow
 
 done:
 	cb.index = i
