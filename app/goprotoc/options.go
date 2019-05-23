@@ -96,7 +96,9 @@ func parseFlags(source string, programName string, args []string, stdout io.Writ
 			if err := noOptionArg(); err != nil {
 				return err
 			}
-			usage(programName, stdout)
+			if err := usage(programName, stdout); err != nil {
+				return err
+			}
 			return errUsage
 		case "--encode":
 			value, err := getOptionArg()

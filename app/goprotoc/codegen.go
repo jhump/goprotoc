@@ -288,6 +288,8 @@ func applyInsertions(fileName string, contents io.Reader, insertions map[string]
 		point := string(data[startPos:endPos])
 		insertedData := insertions[point]
 		if len(insertedData) == 0 {
+			// returned error is always nil from bytes.Buffer
+			// https://golang.org/pkg/bytes/#Buffer.Write
 			result.Write(data[:endPos+1])
 			data = data[endPos+1:]
 			continue

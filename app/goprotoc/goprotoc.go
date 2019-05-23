@@ -111,7 +111,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) err
 	case opts.decodeRaw:
 		err = doDecodeRaw(stdin, stdout)
 	case opts.printFreeFieldNumbers:
-		doPrintFreeFieldNumbers(fds, stdout)
+		err = doPrintFreeFieldNumbers(fds, stdout)
 	default:
 		if !doingCodeGen {
 			return errors.New("Missing output directives.")
@@ -126,8 +126,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) err
 	return err
 }
 
-func usage(programName string, stdout io.Writer) {
-	fmt.Fprintf(
+func usage(programName string, stdout io.Writer) error {
+	_, err := fmt.Fprintf(
 		stdout,
 		`Usage: %s [OPTION] PROTO_FILES
 Parse PROTO_FILES and generate output based on the options given:
@@ -212,6 +212,7 @@ Parse PROTO_FILES and generate output based on the options given:
                               Each line corresponds to a single argument,
                               even if it contains spaces.
 `, programName)
+	return err
 }
 
 func loadDescriptors(descFileNames []string, inputProtoFiles []string) ([]*desc.FileDescriptor, error) {

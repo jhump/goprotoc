@@ -29,10 +29,13 @@ checkgofmt:
 vet:
 	go vet ./...
 
+# Check ST1005 checks that error strings are not capitalized
+# We want to allow this
+
 .PHONY: staticcheck
 staticcheck:
 	@go get honnef.co/go/tools/cmd/staticcheck
-	staticcheck ./...
+	staticcheck -checks 'all -ST1005' ./...
 
 .PHONY: ineffassign
 ineffassign:

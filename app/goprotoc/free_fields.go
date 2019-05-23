@@ -8,31 +8,43 @@ import (
 	"github.com/jhump/protoreflect/desc"
 )
 
-func doPrintFreeFieldNumbers(fds []*desc.FileDescriptor, w io.Writer) {
+func doPrintFreeFieldNumbers(fds []*desc.FileDescriptor, w io.Writer) error {
 	for _, fd := range fds {
 		for _, md := range fd.GetMessageTypes() {
-			printMessageFreeFields(md, w)
+			if err := printMessageFreeFields(md, w); err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
-func printMessageFreeFields(md *desc.MessageDescriptor, w io.Writer) {
+func printMessageFreeFields(md *desc.MessageDescriptor, w io.Writer) error {
 	for _, nested := range md.GetNestedMessageTypes() {
 		printMessageFreeFields(nested, w)
 	}
 
 	unused := computeFreeRanges(md)
-	fmt.Fprintf(w, "%- 35s free:", md.GetFullyQualifiedName())
+	if _, err := fmt.Fprintf(w, "%- 35s free:", md.GetFullyQualifiedName()); err != nil {
+		return err
+	}
 	for _, r := range unused {
 		if r.end == maxTag {
-			fmt.Fprintf(w, " %d-INF", r.start)
+			if _, err := fmt.Fprintf(w, " %d-INF", r.start); err != nil {
+				return err
+			}
 		} else if r.start == r.end {
-			fmt.Fprintf(w, " %d", r.start)
+			if _, err := fmt.Fprintf(w, " %d", r.start); err != nil {
+				return err
+			}
 		} else {
-			fmt.Fprintf(w, " %d-%d", r.start, r.end)
+			if _, err := fmt.Fprintf(w, " %d-%d", r.start, r.end); err != nil {
+				return err
+			}
 		}
 	}
-	fmt.Fprintln(w)
+	_, err := fmt.Fprintln(w)
+	return err
 }
 
 func computeFreeRanges(md *desc.MessageDescriptor) []tagRange {
