@@ -61,6 +61,9 @@ func main() {
 				IncludeSourceCodeInfo: opts.includeSourceInfo,
 			}
 			var err error
+			if opts.protoFiles, err = protoparse.ResolveFilenames(opts.includePaths, opts.protoFiles...); err != nil {
+				fail(err.Error())
+			}
 			if fds, err = p.ParseFiles(opts.protoFiles...); err != nil {
 				fail(err.Error())
 			}
