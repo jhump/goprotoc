@@ -284,7 +284,10 @@ func writeArchiveResult(fileName string, includeManifest bool, files map[string]
 	}()
 
 	if includeManifest {
-		mw, err := z.Create("META-INF/MANIFEST.MF")
+		mw, err := z.CreateHeader(&zip.FileHeader{
+			Name:   "META-INF/MANIFEST.MF",
+			Method: zip.Store,
+		})
 		if err != nil {
 			return err
 		}
@@ -294,7 +297,10 @@ func writeArchiveResult(fileName string, includeManifest bool, files map[string]
 	}
 
 	for name, data := range files {
-		w, err := z.Create(name)
+		w, err := z.CreateHeader(&zip.FileHeader{
+			Name:   name,
+			Method: zip.Store,
+		})
 		if err != nil {
 			return err
 		}
