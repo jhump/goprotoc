@@ -307,11 +307,6 @@ func writeArchiveResult(fileName string, includeManifest bool, files map[string]
 	sort.Strings(fileNames)
 
 	for _, name := range fileNames {
-		data, ok := files[name]
-		if !ok {
-			// This should never happen but this just double-checks.
-			return fmt.Errorf("system error: %s was not a key in files", name)
-		}
 		w, err := z.CreateHeader(&zip.FileHeader{
 			Name:   name,
 			Method: zip.Store,
@@ -319,7 +314,7 @@ func writeArchiveResult(fileName string, includeManifest bool, files map[string]
 		if err != nil {
 			return err
 		}
-		if _, err = io.Copy(w, data); err != nil {
+		if _, err = io.Copy(w, files[name]); err != nil {
 			return err
 		}
 	}
