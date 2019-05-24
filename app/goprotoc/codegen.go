@@ -39,21 +39,35 @@ var protocOutputs = map[string]struct{}{
 	"ruby":     {},
 }
 
+type outputType int
+
+const (
+	outputTypeDir outputType = iota
+	outputTypeZip
+	outputTypeJar
+)
+
+// outputLocation is a location where generated code will reside. It's a directory,
+// a ZIP archive, or a JAR archive; generated files will go inside. This comes
+// from a --*_out argument to protoc.
 type outputLocation struct {
 	path         string
-	isZip, isJar bool
+	locationType outputType
 }
 
+// outputFile represents a generated file. It's a pair of outputLocation and
+// file name. The file name can be a path, relative to the output location.
 type outputFile struct {
-	outputLocation
+	loc      outputLocation
 	fileName string
 }
 
 func (f outputFile) String() string {
-	if f.isZip || f.isJar {
-		return fmt.Sprintf("%s:%s", f.path, f.fileName)
+	if f.loc.locationType == outputTypeDir {
+		return filepath.Join(f.loc.path, f.fileName)
 	}
-	return filepath.Join(f.path, f.fileName)
+	// it's a file *inside* of a zip/jar archive
+	return fmt.Sprintf("%s:%s", f.loc.path, f.fileName)
 }
 
 func doCodeGen(outputs map[string]string, fds []*desc.FileDescriptor, pluginDefs map[string]string) error {
@@ -76,24 +90,24 @@ func doCodeGen(outputs map[string]string, fds []*desc.FileDescriptor, pluginDefs
 	// normal files
 	archiveResults := map[outputLocation]map[string]io.Reader{}
 	for file, data := range results {
-		if file.isJar || file.isZip {
-			archiveFiles := archiveResults[file.outputLocation]
-			if archiveFiles == nil {
-				archiveFiles = map[string]io.Reader{}
-				archiveResults[file.outputLocation] = archiveFiles
-			}
-			archiveFiles[file.fileName] = data
-		} else {
-			fileName := filepath.Join(file.path, file.fileName)
+		if file.loc.locationType == outputTypeDir {
+			fileName := filepath.Join(file.loc.path, file.fileName)
 			if err := writeFileResult(fileName, data); err != nil {
 				return err
 			}
+		} else {
+			archiveFiles := archiveResults[file.loc]
+			if archiveFiles == nil {
+				archiveFiles = map[string]io.Reader{}
+				archiveResults[file.loc] = archiveFiles
+			}
+			archiveFiles[file.fileName] = data
 		}
 	}
 
 	// finally: emit any archives
 	for location, files := range archiveResults {
-		if err := writeArchiveResult(location.path, location.isJar, files); err != nil {
+		if err := writeArchiveResult(location.path, location.locationType == outputTypeJar, files); err != nil {
 			return err
 		}
 	}
@@ -120,24 +134,26 @@ func computeOutputLocations(outputs map[string]string) (map[string]outputLocatio
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to compute absolute path for %s output %s: %v", lang, dest, err)
 		}
-		var isZip, isJar bool
-		if ext := strings.ToLower(filepath.Ext(dest)); ext == ".jar" {
-			isJar = true
-		} else if ext == ".zip" {
-			isZip = true
+		var locType outputType
+		switch ext := strings.ToLower(filepath.Ext(dest)); ext {
+		case ".jar":
+			locType = outputTypeJar
+		case ".zip":
+			locType = outputTypeZip
+		default:
+			locType = outputTypeDir
 		}
 
 		locations[lang] = outputLocation{
-			path:  dest,
-			isZip: isZip,
-			isJar: isJar,
+			path:         dest,
+			locationType: locType,
 		}
 		args[lang] = arg
 
 		// Make sure given directory already exists. But if we are instructed to
 		// put the files in a zip or jar, just make sure the output file's parent
 		// directory exists.
-		if isZip || isJar {
+		if locType != outputTypeDir {
 			dest = filepath.Dir(dest)
 		}
 		fileInfo, err := os.Stat(dest)
@@ -176,8 +192,8 @@ func assembleFileOutputs(resps map[string]*plugins.CodeGenResponse, locations ma
 		err := resp.ForEach(func(name, insertionPoint string, data io.Reader) error {
 			loc := locations[lang]
 			fullOutput := outputFile{
-				outputLocation: loc,
-				fileName:       name,
+				loc:      loc,
+				fileName: name,
 			}
 			o := results[fullOutput]
 			if insertionPoint == "" {
@@ -222,6 +238,8 @@ func assembleFileOutputs(resps map[string]*plugins.CodeGenResponse, locations ma
 }
 
 func writeFileResult(fileName string, data io.Reader) (e error) {
+	// we've already checked that the output directory exists, but the generated
+	// file could be nested inside directories therein, which we want to auto-create
 	if err := os.MkdirAll(filepath.Dir(fileName), os.ModePerm); err != nil {
 		return err
 	}
@@ -399,7 +417,7 @@ type insertedContent struct {
 	lang string
 }
 
-func applyInsertions(file string, contents io.Reader, insertions map[string][]insertedContent) (io.Reader, error) {
+func applyInsertions(fileName string, contents io.Reader, insertions map[string][]insertedContent) (io.Reader, error) {
 	var result bytes.Buffer
 
 	var data []byte
@@ -504,7 +522,7 @@ func applyInsertions(file string, contents io.Reader, insertions map[string][]in
 			}
 		}
 		var buf bytes.Buffer
-		_, _ = fmt.Fprintf(&buf, "missing insertion point(s) in %q: ", file)
+		_, _ = fmt.Fprintf(&buf, "missing insertion point(s) in %q: ", fileName)
 		first := true
 		for lang, points := range pointsByLang {
 			pointSlice := make([]string, 0, len(points))
