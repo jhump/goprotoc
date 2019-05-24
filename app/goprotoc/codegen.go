@@ -1,6 +1,7 @@
 package goprotoc
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"errors"
@@ -38,61 +39,150 @@ var protocOutputs = map[string]struct{}{
 	"ruby":     {},
 }
 
+type outputLocation struct {
+	path         string
+	isZip, isJar bool
+}
+
+type outputFile struct {
+	outputLocation
+	fileName string
+}
+
+func (f outputFile) String() string {
+	if f.isZip || f.isJar {
+		return fmt.Sprintf("%s:%s", f.path, f.fileName)
+	}
+	return filepath.Join(f.path, f.fileName)
+}
+
 func doCodeGen(outputs map[string]string, fds []*desc.FileDescriptor, pluginDefs map[string]string) error {
+	locations, args, err := computeOutputLocations(outputs)
+	if err != nil {
+		return err
+	}
+
+	resps, err := runPlugins(args, fds, pluginDefs)
+	if err != nil {
+		return err
+	}
+
+	results, err := assembleFileOutputs(resps, locations)
+	if err != nil {
+		return err
+	}
+
+	// now we can accumulate outputs by archive and emit the
+	// normal files
+	archiveResults := map[outputLocation]map[string]io.Reader{}
+	for file, data := range results {
+		if file.isJar || file.isZip {
+			archiveFiles := archiveResults[file.outputLocation]
+			if archiveFiles == nil {
+				archiveFiles = map[string]io.Reader{}
+				archiveResults[file.outputLocation] = archiveFiles
+			}
+			archiveFiles[file.fileName] = data
+		} else {
+			fileName := filepath.Join(file.path, file.fileName)
+			if err := writeFileResult(fileName, data); err != nil {
+				return err
+			}
+		}
+	}
+
+	// finally: emit any archives
+	for location, files := range archiveResults {
+		if err := writeArchiveResult(location.path, location.isJar, files); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func computeOutputLocations(outputs map[string]string) (map[string]outputLocation, map[string]string, error) {
+	locations := map[string]outputLocation{}
+	args := map[string]string{}
+	for lang, loc := range outputs {
+		locParts := strings.SplitN(loc, ":", 2)
+		var arg, dest string
+		if len(locParts) > 1 {
+			arg = locParts[0]
+			dest = locParts[1]
+		} else {
+			dest = loc
+		}
+		if dest == "" {
+			return nil, nil, fmt.Errorf("%s has empty output path", lang)
+		}
+		dest, err := filepath.Abs(dest)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to compute absolute path for %s output %s: %v", lang, dest, err)
+		}
+		var isZip, isJar bool
+		if ext := strings.ToLower(filepath.Ext(dest)); ext == ".jar" {
+			isJar = true
+		} else if ext == ".zip" {
+			isZip = true
+		}
+
+		locations[lang] = outputLocation{
+			path:  dest,
+			isZip: isZip,
+			isJar: isJar,
+		}
+		args[lang] = arg
+
+		// Make sure given directory already exists. But if we are instructed to
+		// put the files in a zip or jar, just make sure the output file's parent
+		// directory exists.
+		if isZip || isJar {
+			dest = filepath.Dir(dest)
+		}
+		fileInfo, err := os.Stat(dest)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !fileInfo.IsDir() {
+			return nil, nil, fmt.Errorf("output for %s is not a directory: %s", lang, dest)
+		}
+	}
+
+	return locations, args, nil
+}
+
+func runPlugins(args map[string]string, fds []*desc.FileDescriptor, pluginDefs map[string]string) (map[string]*plugins.CodeGenResponse, error) {
 	req := plugins.CodeGenRequest{
 		Files:         fds,
 		ProtocVersion: protocVersionStruct,
 	}
 	resps := map[string]*plugins.CodeGenResponse{}
-	locations := map[string]string{}
-	for lang, loc := range outputs {
+
+	for lang, arg := range args {
 		resp := plugins.NewCodeGenResponse(lang, nil)
 		resps[lang] = resp
-		locParts := strings.SplitN(loc, ":", 2)
-		var arg string
-		if len(locParts) > 1 {
-			arg = locParts[0]
-			locations[lang] = locParts[1]
-		} else {
-			locations[lang] = loc
-		}
-		// Protoc expects the base output directories to already exist
-		// so we make the same check here.
-		dirPath := locations[lang]
-		// This should have been validated as part of flag parsing but
-		// this double checks.
-		if dirPath == "" {
-			return fmt.Errorf("%s has no output path", dirPath)
-		}
-		// Protoc has special exceptions for .jar and .zip however.
-		// https://github.com/protocolbuffers/protobuf/blob/6dc9832aab87dfdbb1c7b008f4596184e1fd8105/src/google/protobuf/compiler/command_line_interface.cc#L894
-		if ext := filepath.Ext(dirPath); ext == ".jar" || ext == ".zip" {
-			dirPath = filepath.Dir(dirPath)
-		}
-		fileInfo, err := os.Stat(dirPath)
-		if err != nil {
-			return err
-		}
-		if !fileInfo.IsDir() {
-			return fmt.Errorf("%s is not a directory", dirPath)
-		}
 		pluginName := pluginDefs[lang]
 		if err := executePlugin(&req, resp, pluginName, lang, arg); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	results := map[string]fileOutput{}
+	return resps, nil
+}
+
+func assembleFileOutputs(resps map[string]*plugins.CodeGenResponse, locations map[string]outputLocation) (map[outputFile]io.Reader, error) {
+	results := map[outputFile]fileOutput{}
 	for lang, resp := range resps {
 		err := resp.ForEach(func(name, insertionPoint string, data io.Reader) error {
 			loc := locations[lang]
-			fullName, err := filepath.Abs(filepath.Join(loc, name))
-			if err != nil {
-				return err
+			fullOutput := outputFile{
+				outputLocation: loc,
+				fileName:       name,
 			}
-			o := results[fullName]
+			o := results[fullOutput]
 			if insertionPoint == "" {
 				if o.createdBy != "" {
-					return fmt.Errorf("conflict: both %s and %s tried to create file %s", o.createdBy, lang, fullName)
+					return fmt.Errorf("conflict: both %s and %s tried to create file %s", o.createdBy, lang, fullOutput)
 				}
 				o.contents = data
 				o.createdBy = lang
@@ -105,44 +195,96 @@ func doCodeGen(outputs map[string]string, fds []*desc.FileDescriptor, pluginDefs
 				o.insertions[insertionPoint] = append(o.insertions[insertionPoint], content)
 				o.insertsFrom[lang] = struct{}{}
 			}
-			results[fullName] = o
+			results[fullOutput] = o
 			return nil
 		})
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	for fileName, output := range results {
+	resultData := map[outputFile]io.Reader{}
+	for file, output := range results {
 		if output.contents == nil {
-			return fmt.Errorf("%q generated invalid content for %s", output.createdBy, fileName)
+			return nil, fmt.Errorf("%q generated invalid content for %s", output.createdBy, file)
 		}
 		fileContents := output.contents
 		if len(output.insertions) > 0 {
 			var err error
-			fileContents, err = applyInsertions(fileName, output.contents, output.insertions)
+			fileContents, err = applyInsertions(file.String(), output.contents, output.insertions)
 			if err != nil {
-				return err
+				return nil, err
 			}
 		}
-		// The file does not have to exist since we pass o.O_CREATE but the
-		// OpenFile can return error if the directory does not exist, and protoc
-		// makes all necessary subdirectories as part of generation.
-		if err := os.MkdirAll(filepath.Dir(fileName), 0755); err != nil {
-			return err
+		resultData[file] = fileContents
+	}
+	return resultData, nil
+}
+
+func writeFileResult(fileName string, data io.Reader) (e error) {
+	if err := os.MkdirAll(filepath.Dir(fileName), os.ModePerm); err != nil {
+		return err
+	}
+	w, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		closeErr := w.Close()
+		if closeErr != nil && e == nil {
+			e = closeErr
 		}
-		w, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	}()
+
+	_, err = io.Copy(w, data)
+	return err
+}
+
+// same manifest that protoc produces, except "goprotoc" instead of "protoc"
+var manifestContents = []byte(
+	`Manifest-Version: 1.0
+Created-By: 1.6.0 (goprotoc)
+
+`)
+
+func writeArchiveResult(fileName string, includeManifest bool, files map[string]io.Reader) (e error) {
+	fw, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		return err
+	}
+	z := zip.NewWriter(fw)
+
+	defer func() {
+		closeErr := z.Close()
+		if closeErr != nil && e == nil {
+			e = closeErr
+		}
+		closeErr = fw.Close()
+		if closeErr != nil && e == nil {
+			e = closeErr
+		}
+	}()
+
+	if includeManifest {
+		mw, err := z.Create("META-INF/MANIFEST.MF")
 		if err != nil {
 			return err
 		}
-		if _, err := io.Copy(w, fileContents); err != nil {
-			_ = w.Close()
-			return err
-		}
-		if err := w.Close(); err != nil {
+		if _, err := mw.Write(manifestContents); err != nil {
 			return err
 		}
 	}
+
+	for name, data := range files {
+		w, err := z.Create(name)
+		if err != nil {
+			return err
+		}
+		if _, err = io.Copy(w, data); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -185,7 +327,7 @@ func driveProtocAsPlugin(req *plugins.CodeGenRequest, resp *plugins.CodeGenRespo
 	}()
 
 	outDir := filepath.Join(tmpDir, "output")
-	if err := os.Mkdir(outDir, 0777); err != nil {
+	if err := os.Mkdir(outDir, 0700); err != nil {
 		return err
 	}
 
@@ -257,7 +399,7 @@ type insertedContent struct {
 	lang string
 }
 
-func applyInsertions(fileName string, contents io.Reader, insertions map[string][]insertedContent) (io.Reader, error) {
+func applyInsertions(file string, contents io.Reader, insertions map[string][]insertedContent) (io.Reader, error) {
 	var result bytes.Buffer
 
 	var data []byte
@@ -362,7 +504,7 @@ func applyInsertions(fileName string, contents io.Reader, insertions map[string]
 			}
 		}
 		var buf bytes.Buffer
-		_, _ = fmt.Fprintf(&buf, "missing insertion point(s) in %q: ", fileName)
+		_, _ = fmt.Fprintf(&buf, "missing insertion point(s) in %q: ", file)
 		first := true
 		for lang, points := range pointsByLang {
 			pointSlice := make([]string, 0, len(points))
