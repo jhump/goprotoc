@@ -130,10 +130,6 @@ func computeOutputLocations(outputs map[string]string) (map[string]outputLocatio
 		if dest == "" {
 			return nil, nil, fmt.Errorf("%s has empty output path", lang)
 		}
-		dest, err := filepath.Abs(dest)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to compute absolute path for %s output %s: %v", lang, dest, err)
-		}
 		var locType outputType
 		switch ext := strings.ToLower(filepath.Ext(dest)); ext {
 		case ".jar":
@@ -144,8 +140,12 @@ func computeOutputLocations(outputs map[string]string) (map[string]outputLocatio
 			locType = outputTypeDir
 		}
 
+		absDest, err := filepath.Abs(dest)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to compute absolute path for %s output %s: %v", lang, dest, err)
+		}
 		locations[lang] = outputLocation{
-			path:         dest,
+			path:         absDest,
 			locationType: locType,
 		}
 		args[lang] = arg
@@ -158,6 +158,9 @@ func computeOutputLocations(outputs map[string]string) (map[string]outputLocatio
 		}
 		fileInfo, err := os.Stat(dest)
 		if err != nil {
+			if os.IsNotExist(err) {
+				return nil, nil, fmt.Errorf("%s: No such file or directory", dest)
+			}
 			return nil, nil, err
 		}
 		if !fileInfo.IsDir() {
