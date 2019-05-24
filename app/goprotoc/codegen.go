@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -293,7 +294,18 @@ func writeArchiveResult(fileName string, includeManifest bool, files map[string]
 		}
 	}
 
-	for name, data := range files {
+	fileNames := make([]string, 0, len(files))
+	for name := range files {
+		fileNames = append(fileNames, name)
+	}
+	sort.Strings(fileNames)
+
+	for _, name := range fileNames {
+		data, ok := files[name]
+		if !ok {
+			// This should never happen but this just double-checks.
+			return fmt.Errorf("system error: %s was not a key in files", name)
+		}
 		w, err := z.Create(name)
 		if err != nil {
 			return err
