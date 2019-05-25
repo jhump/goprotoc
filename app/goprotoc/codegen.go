@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -299,7 +300,13 @@ func writeArchiveResult(fileName string, includeManifest bool, files map[string]
 		}
 	}
 
-	for name, data := range files {
+	fileNames := make([]string, 0, len(files))
+	for name := range files {
+		fileNames = append(fileNames, name)
+	}
+	sort.Strings(fileNames)
+
+	for _, name := range fileNames {
 		w, err := z.CreateHeader(&zip.FileHeader{
 			Name:   name,
 			Method: zip.Store,
@@ -307,7 +314,7 @@ func writeArchiveResult(fileName string, includeManifest bool, files map[string]
 		if err != nil {
 			return err
 		}
-		if _, err = io.Copy(w, data); err != nil {
+		if _, err = io.Copy(w, files[name]); err != nil {
 			return err
 		}
 	}
