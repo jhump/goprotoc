@@ -285,10 +285,21 @@ func linkFile(fileName string, fds map[string]*descriptor.FileDescriptorProto, l
 }
 
 func saveDescriptor(dest string, fds []*desc.FileDescriptor, includeImports, includeSourceInfo bool) error {
-	fdsByName := map[string]*descriptor.FileDescriptorProto{}
+	var fileNames map[string]struct{}
+	if !includeImports {
+		// if we aren't including imports, then we need a set of file names that
+		// are included so we can create a topologically sorted list w/out
+		// including imports that should not be present.
+		fileNames = map[string]struct{}{}
+		for _, fd := range fds {
+			fileNames[fd.GetName()] = struct{}{}
+		}
+	}
+
 	var fdSet descriptor.FileDescriptorSet
+	alreadyExported := map[string]struct{}{}
 	for _, fd := range fds {
-		toFileDescriptorSet(fdsByName, &fdSet, fd, includeImports, includeSourceInfo)
+		toFileDescriptorSet(alreadyExported, fileNames, &fdSet, fd, includeImports, includeSourceInfo)
 	}
 	b, err := proto.Marshal(&fdSet)
 	if err != nil {
@@ -297,17 +308,23 @@ func saveDescriptor(dest string, fds []*desc.FileDescriptor, includeImports, inc
 	return ioutil.WriteFile(dest, b, 0666)
 }
 
-func toFileDescriptorSet(resultMap map[string]*descriptor.FileDescriptorProto, fdSet *descriptor.FileDescriptorSet, fd *desc.FileDescriptor, includeImports, includeSourceInfo bool) {
-	if _, ok := resultMap[fd.GetName()]; ok {
+func toFileDescriptorSet(alreadySeen, fileNames map[string]struct{}, fdSet *descriptor.FileDescriptorSet, fd *desc.FileDescriptor, includeImports, includeSourceInfo bool) {
+	if _, ok := alreadySeen[fd.GetName()]; ok {
 		// already done this one
 		return
 	}
+	alreadySeen[fd.GetName()] = struct{}{}
 
-	if includeImports {
-		for _, dep := range fd.GetDependencies() {
-			toFileDescriptorSet(resultMap, fdSet, dep, includeImports, includeSourceInfo)
+	for _, dep := range fd.GetDependencies() {
+		if !includeImports {
+			// we only include deps that were explicitly in the set of file names given
+			if _, ok := fileNames[fd.GetName()]; !ok {
+				continue
+			}
 		}
+		toFileDescriptorSet(alreadySeen, fileNames, fdSet, dep, includeImports, includeSourceInfo)
 	}
+
 	fdp := fd.AsFileDescriptorProto()
 	if !includeSourceInfo {
 		// NB: this is destructive, so we need to do this step (part of saving
@@ -316,6 +333,5 @@ func toFileDescriptorSet(resultMap map[string]*descriptor.FileDescriptorProto, f
 		fdp.SourceCodeInfo = nil
 	}
 
-	resultMap[fd.GetName()] = fdp
 	fdSet.File = append(fdSet.File, fdp)
 }
