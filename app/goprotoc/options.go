@@ -90,7 +90,7 @@ func parseFlags(source string, programName string, args []string, stdout io.Writ
 			if err := noOptionArg(); err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintf(stdout, "%s %s\n", protocVersionEmu, gitSha); err != nil {
+			if _, err := fmt.Fprintf(stdout, "goprotoc %s (proto %s)\n", version, protocVersionEmu); err != nil {
 				return err
 			}
 			return errVersion
