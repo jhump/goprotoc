@@ -1,3 +1,5 @@
+dev_build_version=$(shell git describe --tags --always --dirty)
+
 .PHONY: default
 default: deps checkgofmt vet predeclared staticcheck ineffassign errcheck golint golint test
 
@@ -11,7 +13,12 @@ updatedeps:
 
 .PHONY: install
 install:
-	go install ./...
+	go install -ldflags '-X "github.com/jhump/goprotoc/app/goprotoc.version=dev build $(dev_build_version)"' ./...
+
+.PHONY: release
+release:
+	@GO111MODULE=off go get github.com/goreleaser/goreleaser
+	goreleaser --rm-dist
 
 .PHONY: checkgofmt
 checkgofmt:

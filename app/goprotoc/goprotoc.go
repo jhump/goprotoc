@@ -17,10 +17,10 @@ import (
 
 //lint:file-ignore ST1005 capitalized errors that are sentences are command return values printed to stderr
 
-const protocVersionEmu = "goprotoc 3.5.1"
+const protocVersionEmu = "3.5.1"
 
 var (
-	gitSha     = "" // can be replaced by -X linker flag
+	version    = "dev build <no version set>" // can be replaced by -X linker flag
 	errVersion = errors.New("__version_printed__")
 	errUsage   = errors.New("__usage_printed__")
 )
