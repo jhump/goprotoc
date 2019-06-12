@@ -11,7 +11,7 @@ builds:
     ldflags:
       - -s -w -X github.com/jhump/goprotoc/app/goprotoc.version=v{{.Version}}
 
- archive:
+archive:
   format: tar.gz
   format_overrides:
     - goos: windows
