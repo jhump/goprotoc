@@ -318,7 +318,7 @@ func toFileDescriptorSet(alreadySeen, fileNames map[string]struct{}, fdSet *desc
 	for _, dep := range fd.GetDependencies() {
 		if !includeImports {
 			// we only include deps that were explicitly in the set of file names given
-			if _, ok := fileNames[fd.GetName()]; !ok {
+			if _, ok := fileNames[dep.GetName()]; !ok {
 				continue
 			}
 		}

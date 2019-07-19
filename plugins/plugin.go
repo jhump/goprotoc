@@ -103,7 +103,7 @@ type ProtocVersion struct {
 
 func (v ProtocVersion) String() string {
 	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "%d.%d.%d", v.Major, v.Minor, v.Patch)
+	_, _ = fmt.Fprintf(&buf, "%d.%d.%d", v.Major, v.Minor, v.Patch)
 	if v.Suffix != "" {
 		if v.Suffix[0] != '-' {
 			buf.WriteRune('-')
