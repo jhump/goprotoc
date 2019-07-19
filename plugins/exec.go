@@ -112,7 +112,7 @@ func PluginMain(plugin Plugin) {
 	os.Stdout = os.Stderr
 
 	if err := RunPlugin(os.Args[0], plugin, os.Stdin, output); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 	// Success!
