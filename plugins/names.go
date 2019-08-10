@@ -19,6 +19,12 @@ import (
 //
 // GoNames is not thread-safe.
 type GoNames struct {
+	// A user-provided map of proto file names to the Go import package where
+	// that file's code is generated. These mappings can be specified via
+	// "M<protofile>=<gopkg>" args to the "--go_out" protoc argument. Other
+	// plugins that generate Go code may support the option, too.
+	ImportMap map[string]string
+
 	// cache of descriptor to TypeName
 	descTypes map[typeKey]gopoet.TypeName
 	// cache of descriptor to names
@@ -92,15 +98,33 @@ func (n *GoNames) OutputFilenameFor(fd *desc.FileDescriptor, suffix string) stri
 	return path.Join(pkg.ImportPath, name)
 }
 
-// GoPackageForFile returns the Go package for the given file descriptor.
+// GoPackageForFile returns the Go package for the given file descriptor. This will use
+// the file's "go_package" option if it has one, but that can be overridden if the user
+// has supplied an entry in n.ImportMap.
 func (n *GoNames) GoPackageForFile(fd *desc.FileDescriptor) gopoet.Package {
+	return n.GoPackageForFileWithOverride(fd, "")
+}
+
+// GoPackageForFileWithOverride returns the Go package for the given file descriptor,
+// but uses the given string as if it were the "go_package" option value.
+func (n *GoNames) GoPackageForFileWithOverride(fd *desc.FileDescriptor, goPackage string) gopoet.Package {
 	if pkg, ok := n.pkgNames[fd]; ok {
 		return pkg
 	}
 
-	fileName, protoPackage, goOption := fd.GetName(), fd.GetPackage(), fd.GetFileOptions().GetGoPackage()
+	// if not supplied: get go_package option from file, but allow it to
+	// be overridden by user-supplied import map
+	if goPackage == "" {
+		var ok bool
+		goPackage, ok = n.ImportMap[fd.GetName()]
+		if !ok {
+			goPackage = fd.GetFileOptions().GetGoPackage()
+		}
+	}
+
+	fileName, protoPackage := fd.GetName(), fd.GetPackage()
 	var pkgPath, pkgName string
-	if goOption == "" {
+	if goPackage == "" {
 		pkgPath = path.Dir(fileName)
 		if protoPackage == "" {
 			n := path.Base(fileName)
@@ -113,9 +137,8 @@ func (n *GoNames) GoPackageForFile(fd *desc.FileDescriptor) gopoet.Package {
 		} else {
 			pkgName = protoPackage
 		}
-		pkgName = sanitize(pkgName)
 	} else {
-		parts := strings.Split(goOption, ";")
+		parts := strings.Split(goPackage, ";")
 		if len(parts) > 1 {
 			pkgPath = parts[0]
 			pkgName = parts[1]
@@ -128,6 +151,7 @@ func (n *GoNames) GoPackageForFile(fd *desc.FileDescriptor) gopoet.Package {
 			}
 		}
 	}
+	pkgName = sanitize(pkgName)
 
 	pkg := gopoet.Package{ImportPath: pkgPath, Name: pkgName}
 	if n.pkgNames == nil {
