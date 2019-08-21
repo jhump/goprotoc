@@ -171,6 +171,9 @@ func parseFlags(source string, programName string, args []string, stdout io.Writ
 				return fmt.Errorf("plugin name %s is not valid: name should have 'protoc-gen-' prefix", pluginName)
 			}
 			pluginName = pluginName[len("protoc-gen-"):]
+			if opts.pluginDefs == nil {
+				opts.pluginDefs = make(map[string]string, 1)
+			}
 			opts.pluginDefs[pluginName] = pluginLocation
 		default:
 			switch {
@@ -191,12 +194,12 @@ func parseFlags(source string, programName string, args []string, stdout io.Writ
 					return err
 				}
 			case strings.HasPrefix(parts[0], "--") && strings.HasSuffix(parts[0], "_out"):
-				if opts.output == nil {
-					opts.output = make(map[string]string, 1)
-				}
 				value, err := getOptionArg()
 				if err != nil {
 					return err
+				}
+				if opts.output == nil {
+					opts.output = make(map[string]string, 1)
 				}
 				opts.output[parts[0][2:len(parts[0])-4]] = value
 			default:
