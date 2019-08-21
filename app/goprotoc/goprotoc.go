@@ -2,6 +2,7 @@
 package goprotoc
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -81,15 +82,27 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) err
 			if len(opts.output) > 0 {
 				includeSourceInfo = true
 			}
-			p := protoparse.Parser{
-				ImportPaths:           opts.includePaths,
-				IncludeSourceCodeInfo: includeSourceInfo,
-			}
 			var err error
 			if opts.protoFiles, err = protoparse.ResolveFilenames(opts.includePaths, opts.protoFiles...); err != nil {
 				return err
 			}
-			if fds, err = p.ParseFiles(opts.protoFiles...); err != nil {
+			var errs []error
+			p := protoparse.Parser{
+				ImportPaths:           opts.includePaths,
+				IncludeSourceCodeInfo: includeSourceInfo,
+				ErrorReporter: func(err protoparse.ErrorWithPos) error {
+					if len(errs) >= 20 {
+						return errors.New("Too many errors... aborting.")
+					}
+					errs = append(errs, err)
+					return nil
+				},
+			}
+			if fds, err = p.ParseFiles(opts.protoFiles...); err != nil && err != protoparse.ErrInvalidSource {
+				errs = append(errs, err)
+			}
+			err = toError(errs)
+			if err != nil {
 				return err
 			}
 		}
@@ -334,4 +347,27 @@ func toFileDescriptorSet(alreadySeen, fileNames map[string]struct{}, fdSet *desc
 	}
 
 	fdSet.File = append(fdSet.File, fdp)
+}
+
+func toError(errs []error) error {
+	if len(errs) == 0 {
+		return nil
+	}
+	if len(errs) == 1 {
+		return errs[0]
+	}
+	return multiError(errs)
+}
+
+type multiError []error
+
+func (m multiError) Error() string {
+	var buf bytes.Buffer
+	for i, err := range m {
+		if i > 0 {
+			buf.WriteRune('\n')
+		}
+		buf.WriteString(err.Error())
+	}
+	return buf.String()
 }
