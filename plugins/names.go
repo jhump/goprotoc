@@ -260,8 +260,9 @@ func (n *GoNames) GoNameOfOneOf(ood *desc.OneOfDescriptor) string {
 
 // GoNameOfEnumVal returns the name of the constant that represents the given
 // enum value descriptor.
-func (n *GoNames) GoNameOfEnumVal(evd *desc.EnumValueDescriptor) string {
-	return fmt.Sprintf("%s_%s", n.CamelCase(evd.GetParent().GetName()), evd.GetName())
+func (n *GoNames) GoNameOfEnumVal(evd *desc.EnumValueDescriptor) gopoet.Symbol {
+	name := fmt.Sprintf("%s_%s", n.CamelCase(evd.GetParent().GetName()), evd.GetName())
+	return n.GoPackageForFile(evd.GetFile()).Symbol(name)
 }
 
 // GoNameOfExtensionDesc returns the name of the *proto.ExtensionDesc var that
@@ -397,8 +398,8 @@ func (n *GoNames) GoTypeForServiceClientImpl(sd *desc.ServiceDescriptor) string 
 // GoNameOfServiceDesc returns the unexported name of the var that holds the
 // grpc.ServiceDesc that describes the given service.
 //
-// This does not return a *Symbol because the var is not usable outside of
-// the generated package due to its being unexported. So only the symbol's
+// This does not return a gopoet.Symbol because the var is not usable outside
+// of the generated package due to its being unexported. So only the symbol's
 // unqualified name is useful.
 func (n *GoNames) GoNameOfServiceDesc(sd *desc.ServiceDescriptor) string {
 	return n.getOrComputeName(nameKey{d: sd, k: nameKeyServiceDesc}, func() {
