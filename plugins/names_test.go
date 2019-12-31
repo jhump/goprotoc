@@ -101,6 +101,10 @@ func TestGoNameOfField(t *testing.T) {
 	// TODO
 }
 
+func TestGoNameOfEnumValue(t *testing.T) {
+	// TODO
+}
+
 func TestGoNameOfMethod(t *testing.T) {
 	// TODO
 }

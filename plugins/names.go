@@ -258,6 +258,12 @@ func (n *GoNames) GoNameOfOneOf(ood *desc.OneOfDescriptor) string {
 	})
 }
 
+// GoNameOfEnumVal returns the name of the constant that represents the given
+// enum value descriptor.
+func (n *GoNames) GoNameOfEnumVal(evd *desc.EnumValueDescriptor) string {
+	return fmt.Sprintf("%s_%s", n.CamelCase(evd.GetParent().GetName()), evd.GetName())
+}
+
 // GoNameOfExtensionDesc returns the name of the *proto.ExtensionDesc var that
 // represents the given extension field descriptor.
 func (n *GoNames) GoNameOfExtensionDesc(fld *desc.FieldDescriptor) gopoet.Symbol {
