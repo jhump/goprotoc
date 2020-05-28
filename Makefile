@@ -1,7 +1,7 @@
 dev_build_version=$(shell git describe --tags --always --dirty)
 
-.PHONY: default
-default: deps checkgofmt vet predeclared staticcheck ineffassign errcheck golint golint test
+.PHONY: ci
+ci: deps checkgofmt vet predeclared staticcheck ineffassign errcheck golint golint test
 
 .PHONY: deps
 deps:
@@ -49,7 +49,7 @@ ineffassign:
 .PHONY: predeclared
 predeclared:
 	@go get github.com/nishanths/predeclared
-	predeclared .
+	predeclared ./...
 
 .PHONY: golint
 golint:
