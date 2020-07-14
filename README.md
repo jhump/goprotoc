@@ -1,5 +1,5 @@
 # Go-protoc
-[![Build Status](https://travis-ci.org/jhump/goprotoc.svg?branch=master)](https://travis-ci.org/jhump/goprotoc/branches)
+[![Build Status](https://travis-ci.com/jhump/goprotoc.svg?branch=master)](https://travis-ci.com/github/jhump/goprotoc/branches)
 [![Go Report Card](https://goreportcard.com/badge/github.com/jhump/goprotoc)](https://goreportcard.com/report/github.com/jhump/goprotoc)
 [![GoDoc](https://godoc.org/github.com/jhump/goprotoc/plugins?status.svg)](https://godoc.org/github.com/jhump/goprotoc/plugins)
 
