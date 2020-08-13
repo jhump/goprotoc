@@ -9,7 +9,6 @@ import (
 	"unicode"
 
 	dpb "github.com/golang/protobuf/protoc-gen-go/descriptor"
-	"github.com/golang/protobuf/protoc-gen-go/generator"
 	"github.com/jhump/gopoet"
 	"github.com/jhump/protoreflect/desc"
 )
@@ -205,7 +204,7 @@ func (n *GoNames) goSymbolFor(d desc.Descriptor) gopoet.Symbol {
 		l--
 		s[l] = parent.GetName()
 	}
-	return n.GoPackageForFile(d.GetFile()).Symbol(generator.CamelCaseSlice(s))
+	return n.GoPackageForFile(d.GetFile()).Symbol(camelCaseSlice(s))
 }
 
 func isFile(d desc.Descriptor) bool {
@@ -350,6 +349,8 @@ func (n *GoNames) computeTypeOfFieldLocked(fld *desc.FieldDescriptor) {
 		t = gopoet.PointerType(n.GoTypeForMessage(fld.GetMessageType()))
 	case dpb.FieldDescriptorProto_TYPE_ENUM:
 		t = n.GoTypeForEnum(fld.GetEnumType())
+	default:
+		panic(fmt.Sprintf("unrecognized type: %v", fld.GetType()))
 	}
 
 	if fld.IsRepeated() {
@@ -476,7 +477,63 @@ func (n *GoNames) GoTypeOfResponse(md *desc.MethodDescriptor) gopoet.TypeName {
 // upper-case. If the given symbol starts with an underscore, the underscore is
 // replaced with a capital "X".
 func CamelCase(s string) string {
-	return generator.CamelCase(s)
+	// NB(jh): This is forked from generator.CamelCase in the protobuf runtime.
+	// It is forked to avoid deprecation warnings. That entire package is now
+	// deprecated and even prints warnings in its init function(!!). But its
+	// replacement ("protogen" in the google.golang.org/protobuf module) does
+	// not have an analog for this function.
+	if s == "" {
+		return ""
+	}
+	t := make([]byte, 0, 32)
+	i := 0
+	if s[0] == '_' {
+		// Need a capital letter; drop the '_'.
+		t = append(t, 'X')
+		i++
+	}
+	// Invariant: if the next letter is lower case, it must be converted
+	// to upper case.
+	// That is, we process a word at a time, where words are marked by _ or
+	// upper case letter. Digits are treated as words.
+	for ; i < len(s); i++ {
+		c := s[i]
+		if c == '_' && i+1 < len(s) && isASCIILower(s[i+1]) {
+			continue // Skip the underscore in s.
+		}
+		if isASCIIDigit(c) {
+			t = append(t, c)
+			continue
+		}
+		// Assume we have a letter now - if not, it's a bogus identifier.
+		// The next word is a sequence of characters that must start upper case.
+		if isASCIILower(c) {
+			c ^= ' ' // Make it a capital letter.
+		}
+		t = append(t, c) // Guaranteed not lower case.
+		// Accept lower case sequence that follows.
+		for i+1 < len(s) && isASCIILower(s[i+1]) {
+			i++
+			t = append(t, s[i])
+		}
+	}
+	return string(t)
+}
+
+// camelCaseSlice is like CamelCase, but the argument is a slice of strings to
+// be joined with "_".
+func camelCaseSlice(elem []string) string {
+	return CamelCase(strings.Join(elem, "_"))
+}
+
+// Is c an ASCII lower-case letter?
+func isASCIILower(c byte) bool {
+	return 'a' <= c && c <= 'z'
+}
+
+// Is c an ASCII digit?
+func isASCIIDigit(c byte) bool {
+	return '0' <= c && c <= '9'
 }
 
 func (n *GoNames) getOrComputeAndStoreType(key typeKey, compute func() gopoet.TypeName) gopoet.TypeName {
@@ -521,11 +578,11 @@ func (n *GoNames) getOrComputeName(key nameKey, compute func()) string {
 // be replaced with "X" so the resulting identifier is exported without
 // colliding with similar identifier that does not being with an underscore.
 func (n *GoNames) CamelCase(name string) string {
-	return generator.CamelCase(name)
+	return CamelCase(name)
 }
 
 func (n *GoNames) computeService(sd *desc.ServiceDescriptor) {
-	exportedSvr := generator.CamelCase(sd.GetName())
+	exportedSvr := CamelCase(sd.GetName())
 	unexportedSvr := gopoet.Unexport(exportedSvr)
 	pkg := n.GoPackageForFile(sd.GetFile())
 
@@ -535,7 +592,7 @@ func (n *GoNames) computeService(sd *desc.ServiceDescriptor) {
 	n.descNames[nameKey{d: sd, k: nameKeyServiceDesc}] = "_" + exportedSvr + "_serviceDesc"
 
 	for _, mtd := range sd.GetMethods() {
-		mtdName := generator.CamelCase(mtd.GetName())
+		mtdName := CamelCase(mtd.GetName())
 		n.descNames[nameKey{d: mtd, k: nameKeyDefault}] = mtdName
 
 		if !mtd.IsClientStreaming() && !mtd.IsServerStreaming() {
@@ -576,7 +633,7 @@ func (n *GoNames) computeMessage(md *desc.MessageDescriptor) {
 	msgName := msgType.Name
 
 	for _, fld := range md.GetFields() {
-		fldName := generator.CamelCase(fld.GetName())
+		fldName := CamelCase(fld.GetName())
 		for {
 			if _, ok := usedNames[fldName]; ok {
 				fldName = fldName + "_"
@@ -593,7 +650,7 @@ func (n *GoNames) computeMessage(md *desc.MessageDescriptor) {
 		n.descNames[nameKey{d: fld, k: nameKeyDefault}] = fldName
 		ood := fld.GetOneOf()
 		if ood != nil && !computedOneOfs[ood] {
-			oodName := generator.CamelCase(ood.GetName())
+			oodName := CamelCase(ood.GetName())
 			for {
 				if _, ok := usedNames[oodName]; ok {
 					oodName = oodName + "_"
