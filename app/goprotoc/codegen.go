@@ -329,14 +329,42 @@ type fileOutput struct {
 	insertsFrom map[string]struct{}
 }
 
+// RegisterPlugin registers the name of an in-process goprotoc plugin. The given
+// name should not include the "protoc-gen-" prefix that a plugin binary name
+// would have. If the command-line contains a "-plugin" argument to configure
+// the named output type, that will be respected and the in-process plugin will
+// not be used. This can be used to override the use of "protoc" as the source
+// of code gen for Java, C++, Python, etc.
+//
+// If function will panic if the given name already has an in-process plugin
+// registered.
+//
+// This function is not thread-safe. It should be invoked during program
+// initialization, before other functions in this package are invoked to run
+// the goprotoc tool.
+func RegisterPlugin(lang string, plugin plugins.Plugin) {
+	if _, ok := inprocessPlugins[lang]; ok {
+		panic(fmt.Sprintf("plugin already registered for %q", lang))
+	}
+	inprocessPlugins[lang] = plugin
+}
+
+var inprocessPlugins = map[string]plugins.Plugin{}
+
 func executePlugin(req *plugins.CodeGenRequest, resp *plugins.CodeGenResponse, pluginName, lang, outputArg string) error {
 	if len(outputArg) > 0 {
 		req.Args = strings.Split(outputArg, ",")
 	}
 	if pluginName == "" {
+		// no configured plugin path, so first check if we have an in-process plugin
+		if p, ok := inprocessPlugins[lang]; ok {
+			return p(req, resp)
+		}
+		// maybe it's an output provided by protoc
 		if _, ok := protocOutputs[lang]; ok {
 			return driveProtocAsPlugin(req, resp, lang)
 		}
+		// otherwise, assume plugin program name by convention
 		pluginName = "protoc-gen-" + lang
 	}
 	return plugins.Exec(context.Background(), pluginName, req, resp)
