@@ -24,6 +24,22 @@ type GoNames struct {
 	// plugins that generate Go code may support the option, too.
 	ImportMap map[string]string
 
+	// The import path prefix that matches the root of the current Go module.
+	// When non-empty, this will be stripped from paths returned from the
+	// OutputFilenameFor. This path can provided as a "module=<path>" arg to
+	// the "--go_out" protoc argument. Other plugins that generate Go code may
+	// support this option, too.
+	ModuleRoot string
+
+	// When true, output paths computed by OutputFilenameFor using the path
+	// of the input source file instead of using its corresponding Go import
+	// path. This can be enabled using a "paths=source_relative" arg to the
+	// "--go_out" protoc argument. Other plugins that generate Go code may
+	// support this option, too.
+	//
+	// If this flag is true, the ModuleRoot field is ignored.
+	SourceRelative bool
+
 	// cache of descriptor to TypeName
 	descTypes map[typeKey]gopoet.TypeName
 	// cache of descriptor to names
@@ -88,13 +104,27 @@ type nameKey struct {
 // For example, querying for the suffix ".pb.go" will result in the filename
 // created by the protoc-gen-go plugin.
 func (n *GoNames) OutputFilenameFor(fd *desc.FileDescriptor, suffix string) string {
-	pkg := n.GoPackageForFile(fd)
+	var outputPath string
+	if n.SourceRelative {
+		outputPath = filepath.Dir(fd.GetName())
+	} else {
+		outputPath = n.GoPackageForFile(fd).ImportPath
+		if n.ModuleRoot != "" {
+			root := n.ModuleRoot
+			if !strings.HasSuffix(root, "/") {
+				root = root + "/"
+			}
+			outputPath = strings.TrimPrefix(outputPath, root)
+		}
+	}
+
 	name := filepath.Base(fd.GetName())
 	if ext := path.Ext(name); ext == ".proto" || ext == ".protodevel" {
 		name = name[:len(name)-len(ext)]
 	}
 	name += suffix
-	return path.Join(pkg.ImportPath, name)
+
+	return path.Join(outputPath, name)
 }
 
 // GoPackageForFile returns the Go package for the given file descriptor. This will use

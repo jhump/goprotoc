@@ -37,6 +37,12 @@ func TestGoPackageForFile(t *testing.T) {
 		{
 			fd: mustBuildFile(builder.NewFile("foo/test.proto").
 				SetPackageName("foo.bar").
+				SetOptions(&descriptor.FileOptions{GoPackage: proto.String("bar_pkg")})),
+			expectedResult: gopoet.Package{ImportPath: "foo", Name: "bar_pkg"},
+		},
+		{
+			fd: mustBuildFile(builder.NewFile("foo/test.proto").
+				SetPackageName("foo.bar").
 				SetOptions(&descriptor.FileOptions{GoPackage: proto.String("foo.com/bar")})),
 			expectedResult: gopoet.Package{ImportPath: "foo.com/bar", Name: "bar"},
 		},
@@ -94,7 +100,177 @@ func TestGoPackageForFile(t *testing.T) {
 }
 
 func TestOutputFilenameFor(t *testing.T) {
-	// TODO
+	fdNoGoOrProtoPkg := &descriptor.FileDescriptorProto{
+		Name: proto.String("source/path/foo.proto"),
+	}
+	fdNoGoPkg := &descriptor.FileDescriptorProto{
+		Name:    proto.String("source/path/foo.proto"),
+		Package: proto.String("foo.bar.com"),
+	}
+	fdGoPkgNameOnly := &descriptor.FileDescriptorProto{
+		Name:    proto.String("source/path/foo.proto"),
+		Package: proto.String("foo.bar.com"),
+		Options: &descriptor.FileOptions{
+			GoPackage: proto.String("foobar"),
+		},
+	}
+	fdGoPkgPathOnly := &descriptor.FileDescriptorProto{
+		Name:    proto.String("source/path/foo.proto"),
+		Package: proto.String("foo.bar.com"),
+		Options: &descriptor.FileOptions{
+			GoPackage: proto.String("github.com/foo/bar"),
+		},
+	}
+	fdGoPkg := &descriptor.FileDescriptorProto{
+		Name:    proto.String("source/path/foo.proto"),
+		Package: proto.String("foo.bar.com"),
+		Options: &descriptor.FileOptions{
+			GoPackage: proto.String("github.com/foo/bar;foobar"),
+		},
+	}
+
+	namesNoOpts := &GoNames{}
+	namesImportMap := &GoNames{
+		ImportMap: map[string]string{"source/path/foo.proto": "github.com/fu/baz"},
+	}
+	namesImportMapAndModuleRoot := &GoNames{
+		ImportMap:  map[string]string{"source/path/foo.proto": "github.com/fu/baz"},
+		ModuleRoot: "github.com/fu",
+	}
+	namesModuleRoot := &GoNames{
+		ModuleRoot: "github.com/foo",
+	}
+	namesSourceRelative := &GoNames{
+		SourceRelative: true,
+	}
+
+	testCases := []struct {
+		name     string
+		fd       *descriptor.FileDescriptorProto
+		n        *GoNames
+		expected string
+	}{
+		{
+			name:     "no package, no options",
+			fd:       fdNoGoOrProtoPkg,
+			n:        namesNoOpts,
+			expected: "source/path/foo.pb.go",
+		},
+		{
+			name:     "no package, import map",
+			fd:       fdNoGoOrProtoPkg,
+			n:        namesImportMap,
+			expected: "github.com/fu/baz/foo.pb.go",
+		},
+		{
+			name:     "no package, import map + module root",
+			fd:       fdNoGoOrProtoPkg,
+			n:        namesImportMapAndModuleRoot,
+			expected: "baz/foo.pb.go",
+		},
+		{
+			name:     "no package, source relative",
+			fd:       fdNoGoOrProtoPkg,
+			n:        namesSourceRelative,
+			expected: "source/path/foo.pb.go",
+		},
+
+		{
+			name:     "no Go package, no options",
+			fd:       fdNoGoPkg,
+			n:        namesNoOpts,
+			expected: "source/path/foo.pb.go",
+		},
+		{
+			name:     "no Go package, import map + module root",
+			fd:       fdNoGoPkg,
+			n:        namesImportMapAndModuleRoot,
+			expected: "baz/foo.pb.go",
+		},
+
+		{
+			name:     "Go package name, no options",
+			fd:       fdGoPkgNameOnly,
+			n:        namesNoOpts,
+			expected: "source/path/foo.pb.go",
+		},
+		{
+			name:     "Go package name, import map + module root",
+			fd:       fdGoPkgNameOnly,
+			n:        namesImportMapAndModuleRoot,
+			expected: "baz/foo.pb.go",
+		},
+
+		{
+			name:     "Go package path, no options",
+			fd:       fdGoPkgPathOnly,
+			n:        namesNoOpts,
+			expected: "github.com/foo/bar/foo.pb.go",
+		},
+		{
+			name:     "Go package path, import map + module root",
+			fd:       fdGoPkgPathOnly,
+			n:        namesImportMapAndModuleRoot,
+			expected: "baz/foo.pb.go",
+		},
+		{
+			name:     "Go package path, module root",
+			fd:       fdGoPkgPathOnly,
+			n:        namesModuleRoot,
+			expected: "bar/foo.pb.go",
+		},
+		{
+			name:     "Go package path, source relative",
+			fd:       fdGoPkgPathOnly,
+			n:        namesSourceRelative,
+			expected: "source/path/foo.pb.go",
+		},
+
+		{
+			name:     "Go package, no options",
+			fd:       fdGoPkg,
+			n:        namesNoOpts,
+			expected: "github.com/foo/bar/foo.pb.go",
+		},
+		{
+			name:     "Go package, import map",
+			fd:       fdGoPkg,
+			n:        namesImportMap,
+			expected: "github.com/fu/baz/foo.pb.go",
+		},
+		{
+			name:     "Go package, import map + module root",
+			fd:       fdGoPkg,
+			n:        namesImportMapAndModuleRoot,
+			expected: "baz/foo.pb.go",
+		},
+		{
+			name:     "Go package, module root",
+			fd:       fdGoPkg,
+			n:        namesModuleRoot,
+			expected: "bar/foo.pb.go",
+		},
+		{
+			name:     "Go package, source relative",
+			fd:       fdGoPkg,
+			n:        namesSourceRelative,
+			expected: "source/path/foo.pb.go",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			fd, err := desc.CreateFileDescriptor(testCase.fd)
+			if err != nil {
+				t.Errorf("failed to create descriptor: %v", err)
+				return
+			}
+			filename := testCase.n.OutputFilenameFor(fd, ".pb.go")
+			if filename != testCase.expected {
+				t.Errorf("wrong OutputFilenameFor: expected %q, got %q", testCase.expected, filename)
+			}
+		})
+	}
 }
 
 func TestGoNameOfField(t *testing.T) {
