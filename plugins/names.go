@@ -83,8 +83,10 @@ const (
 	nameKeyOneofInterface
 	// This is for the unexported implementation of a service stub interface.
 	nameKeyServiceImplClient
-	// This is for the unexported grpc.ServiceDesc var.
+	// This is for the unexported/legacy grpc.ServiceDesc var.
 	nameKeyServiceDesc
+	// This is for the exported/newer grpc.ServiceDesc var.
+	nameKeyExportedServiceDesc
 	// This is for the unexported implementation of a client-side stream.
 	nameKeyMethodStreamImplClient
 	// This is for the unexported implementation of a server-side stream.
@@ -426,8 +428,23 @@ func (n *GoNames) GoTypeForServiceClientImpl(sd *desc.ServiceDescriptor) string 
 	})
 }
 
-// GoNameOfServiceDesc returns the unexported name of the var that holds the
-// grpc.ServiceDesc that describes the given service.
+// GoNameOfExportedServiceDesc returns the newer exported name of the var that
+// holds the grpc.ServiceDesc that describes the given service. As of v1.0 of
+// protoc-gen-go-grpc, this var is exported.
+//
+// If generating code that needs to reference the older, unexported var (from
+// earlier versions of protoc plugins for Go), use GoNameOfServiceDesc instead.
+func (n *GoNames) GoNameOfExportedServiceDesc(sd *desc.ServiceDescriptor) gopoet.Symbol {
+	name := n.getOrComputeName(nameKey{d: sd, k: nameKeyExportedServiceDesc}, func() {
+		n.computeService(sd)
+	})
+	return n.GoPackageForFile(sd.GetFile()).Symbol(name)
+}
+
+// GoNameOfServiceDesc returns the legacy unexported name of the var that
+// holds the grpc.ServiceDesc that describes the given service. Prior to v1.0
+// and of protoc-gen-go-grpc, for generating Go code related to gRPC, these
+// variables were unexported.
 //
 // This does not return a gopoet.Symbol because the var is not usable outside
 // of the generated package due to its being unexported. So only the symbol's
@@ -620,6 +637,7 @@ func (n *GoNames) computeService(sd *desc.ServiceDescriptor) {
 	n.descTypes[typeKey{d: sd, k: typeKeyServer}] = gopoet.NamedType(pkg.Symbol(exportedSvr + "Server"))
 	n.descNames[nameKey{d: sd, k: nameKeyServiceImplClient}] = unexportedSvr + "Client"
 	n.descNames[nameKey{d: sd, k: nameKeyServiceDesc}] = "_" + exportedSvr + "_serviceDesc"
+	n.descNames[nameKey{d: sd, k: nameKeyExportedServiceDesc}] = exportedSvr + "_ServiceDesc"
 
 	for _, mtd := range sd.GetMethods() {
 		mtdName := CamelCase(mtd.GetName())

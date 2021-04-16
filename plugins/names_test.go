@@ -285,6 +285,10 @@ func TestGoNameOfMethod(t *testing.T) {
 	// TODO
 }
 
+func TestGoNameOfExportedServiceDesc(t *testing.T) {
+	// TODO
+}
+
 func TestGoNameOfServiceDesc(t *testing.T) {
 	// TODO
 }
