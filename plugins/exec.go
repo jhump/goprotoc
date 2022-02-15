@@ -180,6 +180,7 @@ func runPlugin(name string, plugin Plugin, reqpb *plugin_go.CodeGeneratorRequest
 	}
 
 	var respb plugin_go.CodeGeneratorResponse
+	respb.SupportedFeatures = proto.Uint64(resp.features)
 	resp.output.mu.Lock()
 	defer resp.output.mu.Unlock()
 
