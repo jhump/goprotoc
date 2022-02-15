@@ -7,9 +7,9 @@ import (
 	"io/ioutil"
 	"math"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/jhump/protoreflect/desc"
 	"github.com/jhump/protoreflect/dynamic"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 func doEncode(encodeType string, fds []*desc.FileDescriptor, r io.Reader, w io.Writer) error {
@@ -105,7 +105,7 @@ func decodeRawMessage(in *codedReader, w io.Writer, indent string, inGroup bool)
 		if err != nil {
 			return err
 		}
-		if wt == proto.WireEndGroup {
+		if wt == protowire.EndGroupType {
 			if inGroup {
 				return nil
 			}
@@ -118,7 +118,7 @@ func decodeRawMessage(in *codedReader, w io.Writer, indent string, inGroup bool)
 			return fmt.Errorf("input contains illegal tag number: %d", t)
 		}
 		switch wt {
-		case proto.WireVarint:
+		case protowire.VarintType:
 			v, err := in.decodeVarint()
 			if err != nil {
 				return err
@@ -126,7 +126,7 @@ func decodeRawMessage(in *codedReader, w io.Writer, indent string, inGroup bool)
 			if _, err := fmt.Fprintf(w, "%s%d: %d\n", indent, t, v); err != nil {
 				return err
 			}
-		case proto.WireFixed32:
+		case protowire.Fixed32Type:
 			v, err := in.decodeFixed32()
 			if err != nil {
 				return err
@@ -135,7 +135,7 @@ func decodeRawMessage(in *codedReader, w io.Writer, indent string, inGroup bool)
 			if _, err := fmt.Fprintf(w, "%s%d: %f\n", indent, t, f); err != nil {
 				return err
 			}
-		case proto.WireFixed64:
+		case protowire.Fixed64Type:
 			v, err := in.decodeFixed64()
 			if err != nil {
 				return err
@@ -144,7 +144,7 @@ func decodeRawMessage(in *codedReader, w io.Writer, indent string, inGroup bool)
 			if _, err := fmt.Fprintf(w, "%s%d: %f\n", indent, t, f); err != nil {
 				return err
 			}
-		case proto.WireBytes:
+		case protowire.BytesType:
 			v, err := in.decodeRawBytes(false)
 			if err != nil {
 				return err
@@ -169,7 +169,7 @@ func decodeRawMessage(in *codedReader, w io.Writer, indent string, inGroup bool)
 					return err
 				}
 			}
-		case proto.WireStartGroup:
+		case protowire.StartGroupType:
 			if _, err := fmt.Fprintf(w, "%s%d {\n", indent, t); err != nil {
 				return err
 			}

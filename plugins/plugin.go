@@ -97,6 +97,8 @@ func (resp *CodeGenResponse) ForEach(fn func(name, insertionPoint string, data i
 	return nil
 }
 
+// SupportsFeatures allows the plugin to communicate which code generation features that
+// it supports.
 func (resp *CodeGenResponse) SupportsFeatures(feature ...pluginpb.CodeGeneratorResponse_Feature) {
 	for _, f := range feature {
 		resp.features |= uint64(f)

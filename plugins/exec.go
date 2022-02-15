@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -10,11 +11,10 @@ import (
 	"path"
 	"strings"
 
-	"github.com/golang/protobuf/proto"
-	dpb "github.com/golang/protobuf/protoc-gen-go/descriptor"
-	"github.com/golang/protobuf/protoc-gen-go/plugin"
 	"github.com/jhump/protoreflect/desc"
-	"golang.org/x/net/context"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/descriptorpb"
+	"google.golang.org/protobuf/types/pluginpb"
 )
 
 // Exec executes the protoc plugin at the given path, sending it the given
@@ -44,7 +44,7 @@ func Exec(ctx context.Context, pluginPath string, req *CodeGenRequest, resp *Cod
 		return fmt.Errorf("executing plugin %q failed: %v", pluginName, err)
 	}
 
-	var respb plugin_go.CodeGeneratorResponse
+	var respb pluginpb.CodeGeneratorResponse
 	if err := proto.Unmarshal(respBytes, &respb); err != nil {
 		return fmt.Errorf("failed to unmarshal code gen response to bytes: %v", err)
 	}
@@ -59,14 +59,14 @@ func Exec(ctx context.Context, pluginPath string, req *CodeGenRequest, resp *Cod
 	return nil
 }
 
-func toPbRequest(req *CodeGenRequest) *plugin_go.CodeGeneratorRequest {
-	var reqpb plugin_go.CodeGeneratorRequest
+func toPbRequest(req *CodeGenRequest) *pluginpb.CodeGeneratorRequest {
+	var reqpb pluginpb.CodeGeneratorRequest
 	vzero := ProtocVersion{}
 	if req.ProtocVersion != vzero {
-		reqpb.CompilerVersion = &plugin_go.Version{
-			Major: proto.Int(req.ProtocVersion.Major),
-			Minor: proto.Int(req.ProtocVersion.Minor),
-			Patch: proto.Int(req.ProtocVersion.Patch),
+		reqpb.CompilerVersion = &pluginpb.Version{
+			Major: proto.Int32(int32(req.ProtocVersion.Major)),
+			Minor: proto.Int32(int32(req.ProtocVersion.Minor)),
+			Patch: proto.Int32(int32(req.ProtocVersion.Patch)),
 		}
 		if req.ProtocVersion.Suffix != "" {
 			reqpb.CompilerVersion.Suffix = proto.String(req.ProtocVersion.Suffix)
@@ -81,14 +81,14 @@ func toPbRequest(req *CodeGenRequest) *plugin_go.CodeGeneratorRequest {
 	for i, fd := range req.Files {
 		reqpb.FileToGenerate[i] = fd.GetName()
 	}
-	var files []*dpb.FileDescriptorProto
+	var files []*descriptorpb.FileDescriptorProto
 	addRecursive(req.Files, &files, map[string]struct{}{})
 	reqpb.ProtoFile = files
 
 	return &reqpb
 }
 
-func addRecursive(fds []*desc.FileDescriptor, files *[]*dpb.FileDescriptorProto, seen map[string]struct{}) {
+func addRecursive(fds []*desc.FileDescriptor, files *[]*descriptorpb.FileDescriptorProto, seen map[string]struct{}) {
 	for _, fd := range fds {
 		if _, ok := seen[fd.GetName()]; ok {
 			continue
@@ -127,7 +127,7 @@ func PluginMain(plugin Plugin) {
 // fails, a non-nil error will be returned.
 func RunPlugin(name string, plugin Plugin, in io.Reader, out io.Writer) error {
 	name = pluginName(name)
-	finish := func(respb *plugin_go.CodeGeneratorResponse) error {
+	finish := func(respb *pluginpb.CodeGeneratorResponse) error {
 		b, err := proto.Marshal(respb)
 		if err != nil {
 			// see if we can serialize an error response
@@ -145,14 +145,14 @@ func RunPlugin(name string, plugin Plugin, in io.Reader, out io.Writer) error {
 	if err != nil {
 		return finish(errResponse(name, fmt.Errorf("failed to read code gen request: %v", err)))
 	}
-	var reqpb plugin_go.CodeGeneratorRequest
+	var reqpb pluginpb.CodeGeneratorRequest
 	if err := proto.Unmarshal(reqBytes, &reqpb); err != nil {
 		return finish(errResponse(name, fmt.Errorf("failed to read code gen request: %v", err)))
 	}
 	return finish(runPlugin(name, plugin, &reqpb))
 }
 
-func runPlugin(name string, plugin Plugin, reqpb *plugin_go.CodeGeneratorRequest) *plugin_go.CodeGeneratorResponse {
+func runPlugin(name string, plugin Plugin, reqpb *pluginpb.CodeGeneratorRequest) *pluginpb.CodeGeneratorResponse {
 	var req CodeGenRequest
 
 	fds := map[string]*desc.FileDescriptor{}
@@ -179,13 +179,13 @@ func runPlugin(name string, plugin Plugin, reqpb *plugin_go.CodeGeneratorRequest
 		return errResponse(name, err)
 	}
 
-	var respb plugin_go.CodeGeneratorResponse
+	var respb pluginpb.CodeGeneratorResponse
 	respb.SupportedFeatures = proto.Uint64(resp.features)
 	resp.output.mu.Lock()
 	defer resp.output.mu.Unlock()
 
 	for f, d := range resp.output.files {
-		genFile := plugin_go.CodeGeneratorResponse_File{
+		genFile := pluginpb.CodeGeneratorResponse_File{
 			Name: proto.String(f.name),
 		}
 		if f.insertionPoint != "" {
@@ -207,8 +207,8 @@ func runPlugin(name string, plugin Plugin, reqpb *plugin_go.CodeGeneratorRequest
 	return &respb
 }
 
-func toDescriptors(fds []*dpb.FileDescriptorProto, resolved map[string]*desc.FileDescriptor) error {
-	sources := map[string]*dpb.FileDescriptorProto{}
+func toDescriptors(fds []*descriptorpb.FileDescriptorProto, resolved map[string]*desc.FileDescriptor) error {
+	sources := map[string]*descriptorpb.FileDescriptorProto{}
 	for _, fd := range fds {
 		sources[fd.GetName()] = fd
 	}
@@ -220,7 +220,7 @@ func toDescriptors(fds []*dpb.FileDescriptorProto, resolved map[string]*desc.Fil
 	return nil
 }
 
-func toDescriptor(fdp *dpb.FileDescriptorProto, sources map[string]*dpb.FileDescriptorProto, resolved map[string]*desc.FileDescriptor) (*desc.FileDescriptor, error) {
+func toDescriptor(fdp *descriptorpb.FileDescriptorProto, sources map[string]*descriptorpb.FileDescriptorProto, resolved map[string]*desc.FileDescriptor) (*desc.FileDescriptor, error) {
 	if fd, ok := resolved[fdp.GetName()]; ok {
 		return fd, nil
 	}
@@ -240,8 +240,8 @@ func toDescriptor(fdp *dpb.FileDescriptorProto, sources map[string]*dpb.FileDesc
 	return fd, nil
 }
 
-func errResponse(name string, err error) *plugin_go.CodeGeneratorResponse {
-	return &plugin_go.CodeGeneratorResponse{
+func errResponse(name string, err error) *pluginpb.CodeGeneratorResponse {
+	return &pluginpb.CodeGeneratorResponse{
 		Error: proto.String(fmt.Sprintf("%s: %v", name, err)),
 	}
 }
