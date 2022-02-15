@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/jhump/protoreflect/desc"
+	"google.golang.org/protobuf/types/pluginpb"
 )
 
 // Plugin is a code generator that generates code during protoc invocations.
@@ -28,6 +29,7 @@ type CodeGenRequest struct {
 type CodeGenResponse struct {
 	pluginName string
 	output     *outputMap
+	features   uint64
 }
 
 type outputMap struct {
@@ -93,6 +95,14 @@ func (resp *CodeGenResponse) ForEach(fn func(name, insertionPoint string, data i
 		}
 	}
 	return nil
+}
+
+// SupportsFeatures allows the plugin to communicate which code generation features that
+// it supports.
+func (resp *CodeGenResponse) SupportsFeatures(feature ...pluginpb.CodeGeneratorResponse_Feature) {
+	for _, f := range feature {
+		resp.features |= uint64(f)
+	}
 }
 
 // ProtocVersion represents a version of the protoc tool.

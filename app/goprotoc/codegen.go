@@ -15,8 +15,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/jhump/protoreflect/desc"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/jhump/goprotoc/plugins"
 )

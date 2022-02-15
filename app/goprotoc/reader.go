@@ -7,7 +7,7 @@ import (
 	"math"
 	"unicode/utf8"
 
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // errOverflow is returned when an integer is too large to be represented.
@@ -159,14 +159,14 @@ done:
 	return x, nil
 }
 
-func (cb *codedReader) decodeTagAndWireType() (tag int32, wireType int8, err error) {
+func (cb *codedReader) decodeTagAndWireType() (tag int32, wireType protowire.Type, err error) {
 	var v uint64
 	v, err = cb.decodeVarint()
 	if err != nil {
 		return
 	}
 	// low 7 bits is wire type
-	wireType = int8(v & 7)
+	wireType = protowire.Type(v & 7)
 	// rest is int32 tag number
 	v = v >> 3
 	if v > math.MaxInt32 {
@@ -276,7 +276,7 @@ func (cb *codedReader) isProbablyMessage(inGroup bool) bool {
 		if err != nil {
 			return false
 		}
-		if w == proto.WireEndGroup {
+		if w == protowire.EndGroupType {
 			return inGroup
 		}
 		if t < 1 || t > maxTag {
@@ -286,7 +286,7 @@ func (cb *codedReader) isProbablyMessage(inGroup bool) bool {
 			return false
 		}
 		switch w {
-		case proto.WireVarint:
+		case protowire.VarintType:
 			// skip varint by finding last byte (has high bit unset)
 			i := cb.index
 			limit := i + 10 // varint cannot be >10 bytes
@@ -301,15 +301,15 @@ func (cb *codedReader) isProbablyMessage(inGroup bool) bool {
 				i++
 			}
 			cb.index = i + 1
-		case proto.WireFixed32:
+		case protowire.Fixed32Type:
 			if !cb.skip(4) {
 				return false
 			}
-		case proto.WireFixed64:
+		case protowire.Fixed64Type:
 			if !cb.skip(8) {
 				return false
 			}
-		case proto.WireBytes:
+		case protowire.BytesType:
 			l, err := cb.decodeVarint()
 			if err != nil {
 				return false
@@ -317,7 +317,7 @@ func (cb *codedReader) isProbablyMessage(inGroup bool) bool {
 			if !cb.skip(int(l)) {
 				return false
 			}
-		case proto.WireStartGroup:
+		case protowire.StartGroupType:
 			if !cb.isProbablyMessage(true) {
 				return false
 			}

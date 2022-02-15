@@ -10,10 +10,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/protoc-gen-go/descriptor"
 	"github.com/jhump/protoreflect/desc"
 	"github.com/jhump/protoreflect/desc/protoparse"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/descriptorpb"
 )
 
 //lint:file-ignore ST1005 capitalized errors that are sentences are command return values printed to stderr
@@ -233,13 +233,13 @@ Parse PROTO_FILES and generate output based on the options given:
 }
 
 func loadDescriptors(descFileNames []string, inputProtoFiles []string) ([]*desc.FileDescriptor, error) {
-	allFiles := map[string]*descriptor.FileDescriptorProto{}
+	allFiles := map[string]*descriptorpb.FileDescriptorProto{}
 	for _, fileName := range descFileNames {
 		d, err := ioutil.ReadFile(fileName)
 		if err != nil {
 			return nil, err
 		}
-		var set descriptor.FileDescriptorSet
+		var set descriptorpb.FileDescriptorSet
 		if err := proto.Unmarshal(d, &set); err != nil {
 			return nil, fmt.Errorf("file %q is not a valid file descriptor set: %v", fileName, err)
 		}
@@ -266,7 +266,7 @@ func loadDescriptors(descFileNames []string, inputProtoFiles []string) ([]*desc.
 	return result, nil
 }
 
-func linkFile(fileName string, fds map[string]*descriptor.FileDescriptorProto, linkedFds map[string]*desc.FileDescriptor, seen []string) (*desc.FileDescriptor, error) {
+func linkFile(fileName string, fds map[string]*descriptorpb.FileDescriptorProto, linkedFds map[string]*desc.FileDescriptor, seen []string) (*desc.FileDescriptor, error) {
 	for _, name := range seen {
 		if fileName == name {
 			seen = append(seen, fileName)
@@ -309,7 +309,7 @@ func saveDescriptor(dest string, fds []*desc.FileDescriptor, includeImports, inc
 		}
 	}
 
-	var fdSet descriptor.FileDescriptorSet
+	var fdSet descriptorpb.FileDescriptorSet
 	alreadyExported := map[string]struct{}{}
 	for _, fd := range fds {
 		toFileDescriptorSet(alreadyExported, fileNames, &fdSet, fd, includeImports, includeSourceInfo)
@@ -321,7 +321,7 @@ func saveDescriptor(dest string, fds []*desc.FileDescriptor, includeImports, inc
 	return ioutil.WriteFile(dest, b, 0666)
 }
 
-func toFileDescriptorSet(alreadySeen, fileNames map[string]struct{}, fdSet *descriptor.FileDescriptorSet, fd *desc.FileDescriptor, includeImports, includeSourceInfo bool) {
+func toFileDescriptorSet(alreadySeen, fileNames map[string]struct{}, fdSet *descriptorpb.FileDescriptorSet, fd *desc.FileDescriptor, includeImports, includeSourceInfo bool) {
 	if _, ok := alreadySeen[fd.GetName()]; ok {
 		// already done this one
 		return

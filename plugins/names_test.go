@@ -3,11 +3,11 @@ package plugins
 import (
 	"testing"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/protoc-gen-go/descriptor"
 	"github.com/jhump/gopoet"
 	"github.com/jhump/protoreflect/desc"
 	"github.com/jhump/protoreflect/desc/builder"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/descriptorpb"
 )
 
 func mustBuildFile(f *builder.FileBuilder) *desc.FileDescriptor {
@@ -37,39 +37,39 @@ func TestGoPackageForFile(t *testing.T) {
 		{
 			fd: mustBuildFile(builder.NewFile("foo/test.proto").
 				SetPackageName("foo.bar").
-				SetOptions(&descriptor.FileOptions{GoPackage: proto.String("bar_pkg")})),
+				SetOptions(&descriptorpb.FileOptions{GoPackage: proto.String("bar_pkg")})),
 			expectedResult: gopoet.Package{ImportPath: "foo", Name: "bar_pkg"},
 		},
 		{
 			fd: mustBuildFile(builder.NewFile("foo/test.proto").
 				SetPackageName("foo.bar").
-				SetOptions(&descriptor.FileOptions{GoPackage: proto.String("foo.com/bar")})),
+				SetOptions(&descriptorpb.FileOptions{GoPackage: proto.String("foo.com/bar")})),
 			expectedResult: gopoet.Package{ImportPath: "foo.com/bar", Name: "bar"},
 		},
 		{
 			fd: mustBuildFile(builder.NewFile("foo/test.proto").
 				SetPackageName("foo.bar").
-				SetOptions(&descriptor.FileOptions{GoPackage: proto.String("foo.com/bar;bar_pkg")})),
+				SetOptions(&descriptorpb.FileOptions{GoPackage: proto.String("foo.com/bar;bar_pkg")})),
 			expectedResult: gopoet.Package{ImportPath: "foo.com/bar", Name: "bar_pkg"},
 		},
 		{
 			fd: mustBuildFile(builder.NewFile("foo/test.proto").
 				SetPackageName("foo.bar").
-				SetOptions(&descriptor.FileOptions{GoPackage: proto.String("foo.com/bar;bar_pkg")})),
+				SetOptions(&descriptorpb.FileOptions{GoPackage: proto.String("foo.com/bar;bar_pkg")})),
 			importMap:      map[string]string{"foo/blah.proto": "foo.io/baz"}, // not a match
 			expectedResult: gopoet.Package{ImportPath: "foo.com/bar", Name: "bar_pkg"},
 		},
 		{
 			fd: mustBuildFile(builder.NewFile("foo/test.proto").
 				SetPackageName("foo.bar").
-				SetOptions(&descriptor.FileOptions{GoPackage: proto.String("foo.com/bar;bar_pkg")})),
+				SetOptions(&descriptorpb.FileOptions{GoPackage: proto.String("foo.com/bar;bar_pkg")})),
 			importMap:      map[string]string{"foo/test.proto": "foo.io/baz"},
 			expectedResult: gopoet.Package{ImportPath: "foo.io/baz", Name: "baz"},
 		},
 		{
 			fd: mustBuildFile(builder.NewFile("foo/test.proto").
 				SetPackageName("foo.bar").
-				SetOptions(&descriptor.FileOptions{GoPackage: proto.String("foo.com/bar;bar_pkg")})),
+				SetOptions(&descriptorpb.FileOptions{GoPackage: proto.String("foo.com/bar;bar_pkg")})),
 			importMap:      map[string]string{"foo/test.proto": "foo.io/baz"},
 			override:       "foo.net/bar/baz;bar_baz",
 			expectedResult: gopoet.Package{ImportPath: "foo.net/bar/baz", Name: "bar_baz"},
@@ -100,31 +100,31 @@ func TestGoPackageForFile(t *testing.T) {
 }
 
 func TestOutputFilenameFor(t *testing.T) {
-	fdNoGoOrProtoPkg := &descriptor.FileDescriptorProto{
+	fdNoGoOrProtoPkg := &descriptorpb.FileDescriptorProto{
 		Name: proto.String("source/path/foo.proto"),
 	}
-	fdNoGoPkg := &descriptor.FileDescriptorProto{
+	fdNoGoPkg := &descriptorpb.FileDescriptorProto{
 		Name:    proto.String("source/path/foo.proto"),
 		Package: proto.String("foo.bar.com"),
 	}
-	fdGoPkgNameOnly := &descriptor.FileDescriptorProto{
+	fdGoPkgNameOnly := &descriptorpb.FileDescriptorProto{
 		Name:    proto.String("source/path/foo.proto"),
 		Package: proto.String("foo.bar.com"),
-		Options: &descriptor.FileOptions{
+		Options: &descriptorpb.FileOptions{
 			GoPackage: proto.String("foobar"),
 		},
 	}
-	fdGoPkgPathOnly := &descriptor.FileDescriptorProto{
+	fdGoPkgPathOnly := &descriptorpb.FileDescriptorProto{
 		Name:    proto.String("source/path/foo.proto"),
 		Package: proto.String("foo.bar.com"),
-		Options: &descriptor.FileOptions{
+		Options: &descriptorpb.FileOptions{
 			GoPackage: proto.String("github.com/foo/bar"),
 		},
 	}
-	fdGoPkg := &descriptor.FileDescriptorProto{
+	fdGoPkg := &descriptorpb.FileDescriptorProto{
 		Name:    proto.String("source/path/foo.proto"),
 		Package: proto.String("foo.bar.com"),
-		Options: &descriptor.FileOptions{
+		Options: &descriptorpb.FileOptions{
 			GoPackage: proto.String("github.com/foo/bar;foobar"),
 		},
 	}
@@ -146,7 +146,7 @@ func TestOutputFilenameFor(t *testing.T) {
 
 	testCases := []struct {
 		name     string
-		fd       *descriptor.FileDescriptorProto
+		fd       *descriptorpb.FileDescriptorProto
 		n        *GoNames
 		expected string
 	}{
@@ -262,7 +262,7 @@ func TestOutputFilenameFor(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			fd, err := desc.CreateFileDescriptor(testCase.fd)
 			if err != nil {
-				t.Errorf("failed to create descriptor: %v", err)
+				t.Errorf("failed to create descriptorpb: %v", err)
 				return
 			}
 			filename := testCase.n.OutputFilenameFor(fd, ".pb.go")
