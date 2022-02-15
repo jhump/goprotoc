@@ -17,7 +17,7 @@ install:
 
 .PHONY: release
 release:
-	@GO111MODULE=on go install github.com/goreleaser/goreleaser
+	@GO111MODULE=on go install github.com/goreleaser/goreleaserv0.134.0
 	goreleaser --rm-dist
 
 .PHONY: checkgofmt
@@ -38,27 +38,27 @@ vet:
 
 .PHONY: staticcheck
 staticcheck:
-	@GO111MODULE=on go install honnef.co/go/tools/cmd/staticcheck
+	@GO111MODULE=on go install honnef.co/go/tools/cmd/staticcheck@v0.0.1-2020.1.4
 	staticcheck ./...
 
 .PHONY: ineffassign
 ineffassign:
-	@GO111MODULE=on go install github.com/gordonklaus/ineffassign
+	@GO111MODULE=on go install github.com/gordonklaus/ineffassign@v0.0.0-20200309095847-7953dde2c7bf
 	ineffassign .
 
 .PHONY: predeclared
 predeclared:
-	@GO111MODULE=on go install github.com/nishanths/predeclared
+	@GO111MODULE=on go install github.com/nishanths/predeclared@v0.0.0-20200524104333-86fad755b4d3
 	predeclared ./...
 
 .PHONY: golint
 golint:
-	@GO111MODULE=on go install golang.org/x/lint/golint
+	@GO111MODULE=on go install golang.org/x/lint/golint@v0.0.0-20200302205851-738671d3881b
 	golint -min_confidence 0.9 -set_exit_status ./...
 
 .PHONY: errcheck
 errcheck:
-	@GO111MODULE=on go install github.com/kisielk/errcheck
+	@GO111MODULE=on go install github.com/kisielk/errcheck@v1.2.0
 	errcheck ./...
 
 .PHONY: test
