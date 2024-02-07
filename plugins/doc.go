@@ -2,28 +2,23 @@
 // simplify the task of implementing the plugin interface and generating
 // Go code.
 //
-// Interface for Protoc Plugins
+// # Interface for Protoc Plugins
 //
 // A protoc plugin need only provide a function whose signature matches the
 // Plugin type and then wire it up in a main method like so:
 //
-//    func main() {
-//        output := os.Stdout
-//        os.Stdout = os.Stderr
-//        err := plugins.RunPlugin(os.Args[0], doCodeGen, os.Stdin, output)
-//        if err != nil {
-//            os.Exit(1)
-//        }
-//    }
+//	func main() {
+//	    plugins.PluginMain(doCodeGen)
+//	}
 //
-//    func doCodeGen(req  *plugins.CodeGenRequest,
-//                   resp *plugins.CodeGenResponse) error {
-//        // ...
-//        // Process req, generate code to resp
-//        // ...
-//    }
+//	func doCodeGen(req  *plugins.CodeGenRequest,
+//	               resp *plugins.CodeGenResponse) error {
+//	    // ...
+//	    // Process req, generate code to resp
+//	    // ...
+//	}
 //
-// Code Generation Helpers
+// # Code Generation Helpers
 //
 // This package has numerous helpful types for generating Go code. For
 // example, GoNames provides numerous functions for computing the names

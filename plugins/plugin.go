@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 
-	"github.com/jhump/protoreflect/desc"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/pluginpb"
 )
 
@@ -20,9 +23,68 @@ type CodeGenRequest struct {
 	// Args are the parameters for the plugin.
 	Args []string
 	// Files are the proto source files for which code should be generated.
-	Files []*desc.FileDescriptor
+	Files []protoreflect.FileDescriptor
+	// SourceFiles are raw descriptor protos that contain source-only options.
+	// Each element corresponds to an element in Files (so the first entry in
+	// this slice corresponds to the first entry in Files, etc).
+	//
+	// If a plugin intends to embed descriptor data in its output, it should
+	// NOT use these descriptors but should instead use the descriptors in
+	// RawFiles. These descriptors contain option data that is not meant to
+	// be retained beyond the input source code.
+	SourceFiles []*descriptorpb.FileDescriptorProto
+	// RawFiles are the raw descriptor protos that back Files. This contains
+	// an entry for every element in Files as well as for all dependencies.
+	// These provide direct access to the underlying protos and accessing
+	// them via this field is much more efficient than generating them using
+	// the google.golang.org/reflect/protodesc package.
+	RawFiles map[string]*descriptorpb.FileDescriptorProto
 	// The version of protoc that has invoked the plugin.
-	ProtocVersion ProtocVersion
+	ProtocVersion *ProtocVersion
+}
+
+func (req *CodeGenRequest) toPbRequest() *pluginpb.CodeGeneratorRequest {
+	var reqpb pluginpb.CodeGeneratorRequest
+	if req.ProtocVersion != nil {
+		reqpb.CompilerVersion = &pluginpb.Version{
+			Major: proto.Int32(int32(req.ProtocVersion.Major)),
+			Minor: proto.Int32(int32(req.ProtocVersion.Minor)),
+			Patch: proto.Int32(int32(req.ProtocVersion.Patch)),
+		}
+		if req.ProtocVersion.Suffix != "" {
+			reqpb.CompilerVersion.Suffix = proto.String(req.ProtocVersion.Suffix)
+		}
+	}
+
+	if len(req.Args) > 0 {
+		reqpb.Parameter = proto.String(strings.Join(req.Args, ","))
+	}
+
+	reqpb.FileToGenerate = make([]string, len(req.Files))
+	for i, fd := range req.Files {
+		reqpb.FileToGenerate[i] = fd.Path()
+	}
+	var files []*descriptorpb.FileDescriptorProto
+	for _, fd := range req.Files {
+		req.addRecursive(fd, &files, map[string]struct{}{})
+	}
+	reqpb.ProtoFile = files
+	reqpb.SourceFileDescriptors = req.SourceFiles
+
+	return &reqpb
+}
+
+func (req *CodeGenRequest) addRecursive(fd protoreflect.FileDescriptor, files *[]*descriptorpb.FileDescriptorProto, seen map[string]struct{}) {
+	if _, ok := seen[fd.Path()]; ok {
+		return
+	}
+	seen[fd.Path()] = struct{}{}
+
+	deps := fd.Imports()
+	for i, length := 0, deps.Len(); i < length; i++ {
+		req.addRecursive(deps.Get(i).FileDescriptor, files, seen)
+		*files = append(*files, req.RawFiles[fd.Path()])
+	}
 }
 
 // CodeGenResponse is how the plugin transmits generated code to protoc.
@@ -111,7 +173,10 @@ type ProtocVersion struct {
 	Suffix              string
 }
 
-func (v ProtocVersion) String() string {
+func (v *ProtocVersion) String() string {
+	if v == nil {
+		return "(unknown)"
+	}
 	var buf bytes.Buffer
 	_, _ = fmt.Fprintf(&buf, "%d.%d.%d", v.Major, v.Minor, v.Patch)
 	if v.Suffix != "" {
