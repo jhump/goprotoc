@@ -39,7 +39,8 @@ type CodeGenRequest struct {
 	// them via this field is much more efficient than generating them using
 	// the google.golang.org/reflect/protodesc package.
 	RawFiles map[string]*descriptorpb.FileDescriptorProto
-	// The version of protoc that has invoked the plugin.
+	// The version of protoc that has invoked the plugin. It will be nil
+	// if no version was provided.
 	ProtocVersion *ProtocVersion
 }
 
@@ -89,41 +90,25 @@ func (req *CodeGenRequest) addRecursive(fd protoreflect.FileDescriptor, files *[
 
 // CodeGenResponse is how the plugin transmits generated code to protoc.
 type CodeGenResponse struct {
-	pluginName string
-	output     *outputMap
-	features   uint64
+	pluginName             string
+	output                 *outputMap
+	features               uint64
+	minEdition, maxEdition descriptorpb.Edition
 }
 
-type outputMap struct {
-	mu    sync.Mutex
-	files map[result][]data
-}
-
-type result struct {
-	name, insertionPoint string
-}
-
-type data struct {
-	plugin   string
-	contents io.Reader
-}
-
-func (m *outputMap) addSnippet(pluginName, name, insertionPoint string, contents io.Reader) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	key := result{name: name, insertionPoint: insertionPoint}
-	if m.files == nil {
-		m.files = map[result][]data{}
+// NewCodeGenResponse creates a new response for the named plugin. If other is
+// non-nil, files added to the returned response will be contributed to other.
+func NewCodeGenResponse(pluginName string, other *CodeGenResponse) *CodeGenResponse {
+	var output *outputMap
+	if other != nil {
+		output = other.output
+	} else {
+		output = &outputMap{}
 	}
-	if insertionPoint == "" {
-		// can only create one file per name, but can create multiple snippets
-		// that will be concatenated together
-		if d := m.files[key]; len(d) > 0 {
-			panic(fmt.Sprintf("file %s already opened for writing by plugin %s", name, d[0].plugin))
-		}
+	return &CodeGenResponse{
+		pluginName: pluginName,
+		output:     output,
 	}
-	m.files[key] = append(m.files[key], data{plugin: pluginName, contents: contents})
 }
 
 // OutputSnippet returns a writer for creating the snippet to be stored in the
@@ -165,6 +150,31 @@ func (resp *CodeGenResponse) SupportsFeatures(feature ...pluginpb.CodeGeneratorR
 	for _, f := range feature {
 		resp.features |= uint64(f)
 	}
+	if (resp.features&uint64(pluginpb.CodeGeneratorResponse_FEATURE_SUPPORTS_EDITIONS)) != 0 &&
+		resp.minEdition == 0 {
+		// Need min and max editions populated if editions are supported.
+		// Default to just the first edition, 2023. Caller must use
+		// SupportsEditions to set a different range.
+		resp.minEdition = descriptorpb.Edition_EDITION_2023
+		resp.maxEdition = descriptorpb.Edition_EDITION_2023
+	}
+}
+
+// SupportsEditions allows the plugin to communicate which editions that it supports.
+// Calling this method implicitly sets editions as a supported feature.
+func (resp *CodeGenResponse) SupportsEditions(min, max descriptorpb.Edition) {
+	if min < descriptorpb.Edition_EDITION_2023 {
+		min = descriptorpb.Edition_EDITION_2023
+	}
+	if max < descriptorpb.Edition_EDITION_2023 {
+		max = descriptorpb.Edition_EDITION_2023
+	}
+	if min < max {
+		min, max = max, min
+	}
+	resp.features |= uint64(pluginpb.CodeGeneratorResponse_FEATURE_SUPPORTS_EDITIONS)
+	resp.minEdition = min
+	resp.maxEdition = max
 }
 
 // ProtocVersion represents a version of the protoc tool.
@@ -188,17 +198,34 @@ func (v *ProtocVersion) String() string {
 	return buf.String()
 }
 
-// NewCodeGenResponse creates a new response for the named plugin. If other is
-// non-nil, files added to the returned response will be contributed to other.
-func NewCodeGenResponse(pluginName string, other *CodeGenResponse) *CodeGenResponse {
-	var output *outputMap
-	if other != nil {
-		output = other.output
-	} else {
-		output = &outputMap{}
+type outputMap struct {
+	mu    sync.Mutex
+	files map[result][]data
+}
+
+func (m *outputMap) addSnippet(pluginName, name, insertionPoint string, contents io.Reader) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	key := result{name: name, insertionPoint: insertionPoint}
+	if m.files == nil {
+		m.files = map[result][]data{}
 	}
-	return &CodeGenResponse{
-		pluginName: pluginName,
-		output:     output,
+	if insertionPoint == "" {
+		// can only create one file per name, but can create multiple snippets
+		// that will be concatenated together
+		if d := m.files[key]; len(d) > 0 {
+			panic(fmt.Sprintf("file %s already opened for writing by plugin %s", name, d[0].plugin))
+		}
 	}
+	m.files[key] = append(m.files[key], data{plugin: pluginName, contents: contents})
+}
+
+type result struct {
+	name, insertionPoint string
+}
+
+type data struct {
+	plugin   string
+	contents io.Reader
 }
