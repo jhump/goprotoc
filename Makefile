@@ -1,7 +1,7 @@
 dev_build_version=$(shell git describe --tags --always --dirty)
 
 .PHONY: ci
-ci: deps checkgofmt vet predeclared staticcheck ineffassign errcheck golint golint test
+ci: deps checkgofmt vet staticcheck ineffassign errcheck golint golint test
 
 .PHONY: deps
 deps:
@@ -38,18 +38,13 @@ vet:
 
 .PHONY: staticcheck
 staticcheck:
-	@GO111MODULE=on go install honnef.co/go/tools/cmd/staticcheck@v0.0.1-2020.1.4
+	@GO111MODULE=on go install honnef.co/go/tools/cmd/staticcheck@v0.4.6
 	staticcheck ./...
 
 .PHONY: ineffassign
 ineffassign:
 	@GO111MODULE=on go install github.com/gordonklaus/ineffassign@v0.0.0-20200309095847-7953dde2c7bf
 	ineffassign .
-
-.PHONY: predeclared
-predeclared:
-	@GO111MODULE=on go install github.com/nishanths/predeclared@v0.0.0-20200524104333-86fad755b4d3
-	predeclared ./...
 
 .PHONY: golint
 golint:

@@ -1,4 +1,4 @@
-package plugins
+package plugin
 
 import (
 	"bytes"
@@ -59,11 +59,11 @@ func Exec(ctx context.Context, pluginPath string, req *CodeGenRequest, resp *Cod
 	return nil
 }
 
-// PluginMain should be called from main functions of protoc plugins that are
+// Main should be called from main functions of protoc plugins that are
 // written in Go. This will handle invoking the given plugin function, handling
 // any errors, writing the results to the process's stdout, and then exiting the
 // process.
-func PluginMain(plugin Plugin) {
+func Main(plugin Plugin) {
 	output := os.Stdout
 
 	// We need to be strict about what goes to stdout: only the plugin response.

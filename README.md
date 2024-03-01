@@ -1,7 +1,7 @@
 # Go-protoc
 [![Build Status](https://circleci.com/gh/jhump/goprotoc/tree/master.svg?style=svg)](https://circleci.com/gh/jhump/goprotoc/tree/master)
 [![Go Report Card](https://goreportcard.com/badge/github.com/jhump/goprotoc)](https://goreportcard.com/report/github.com/jhump/goprotoc)
-[![GoDoc](https://godoc.org/github.com/jhump/goprotoc/plugins?status.svg)](https://godoc.org/github.com/jhump/goprotoc/plugins)
+[![GoDoc](https://godoc.org/github.com/jhump/goprotoc/v2/plugin?status.svg)](https://godoc.org/github.com/jhump/goprotoc/v2plugin)
 
 This repo makes it easy to build Protobuf plugins. The official Protobuf runtime for Go includes a similar
 package, but it is in practice only useful for generating Go code. It places extra constraints on the input
