@@ -3,7 +3,7 @@ module github.com/jhump/goprotoc
 go 1.15
 
 require (
-	github.com/golang/protobuf v1.5.0
+	github.com/golang/protobuf v1.5.4
 	github.com/jhump/gopoet v0.0.0-20190322174617-17282ff210b3
 	github.com/jhump/protoreflect v1.11.0
 	github.com/kr/pretty v0.1.0 // indirect
