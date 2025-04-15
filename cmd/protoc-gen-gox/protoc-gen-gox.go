@@ -1,7 +1,7 @@
 // Command protoc-gen-gox is a protoc plugin. It is a dispatcher that will run
 // protoc-gen-go as well as other protoc plugins that also generate Go code.
 //
-// Protoc Arguments
+// # Protoc Arguments
 //
 // By default, it will just run protoc-gen-go, as if a --go_out parameter had
 // been present on the protoc command-line. Before the output location, you can
@@ -9,21 +9,21 @@
 // arguments are a comma-separated list, followed by a colon and then the output
 // location:
 //
-//    protoc --gox_out=-go,+foo:./ test.proto
+//	protoc --gox_out=-go,+foo:./ test.proto
 //
 // The allowed args are:
-//    1. "config=<filename>": A yaml file that contains configuration for the
-//       plugins that protoc-gen-gox will run.
-//    2. "plugin_path=<list>": Indicates a pipe-delimited list of directories
-//       where protoc-gen-gox will search for its plugins. If a plugin is not
-//       found in this plugin path, the directories in the PATH environment
-//       variable will also be searched.
-//    3. "+<plugin>": Indicates that the named plugin should be run, even if it
-//       is not referenced in any given config file.
-//    4. "-<plugin>": Indicates that the named plugin should NOT be run. Its
-//       configuration in any named config file is ignored. This is the only way
-//       to prevent the standard go plugin (protoc-gen-go) from running since it
-//       will run under normal circumstances, even without any configuration.
+//  1. "config=<filename>": A yaml file that contains configuration for the
+//     plugins that protoc-gen-gox will run.
+//  2. "plugin_path=<list>": Indicates a pipe-delimited list of directories
+//     where protoc-gen-gox will search for its plugins. If a plugin is not
+//     found in this plugin path, the directories in the PATH environment
+//     variable will also be searched.
+//  3. "+<plugin>": Indicates that the named plugin should be run, even if it
+//     is not referenced in any given config file.
+//  4. "-<plugin>": Indicates that the named plugin should NOT be run. Its
+//     configuration in any named config file is ignored. This is the only way
+//     to prevent the standard go plugin (protoc-gen-go) from running since it
+//     will run under normal circumstances, even without any configuration.
 //
 // A plugin may be referenced via its full name, such as "protoc-gen-go", or via
 // its short name, such as "go". Furthermore, the actual plugin file/executable
@@ -36,30 +36,30 @@
 // not allowed to configure this psuedo-plugin in a config file: configure the
 // standard "go" plugin instead with a "plugins=grpc" argument.
 //
-// Config File
+// # Config File
 //
 // The config file, optionally indicated by a "config=<filename>" argument, must
 // be a YAML file. Its format is as follows:
 //
-//    # optional list of directories to search for plugins
-//    plugin_path: ["/foo", "/bar", "/baz"]
+//	# optional list of directories to search for plugins
+//	plugin_path: ["/foo", "/bar", "/baz"]
 //
-//    # optional list of parameters to pass to *every* plugin
-//    common_params: []
+//	# optional list of parameters to pass to *every* plugin
+//	common_params: []
 //
-//    # other keys indicate plugin names and their config
-//    plugin_name:
-//      # optional path to where plugin file resides - can be path to
-//      # plugin itself or directory that contains plugin
-//      location: "/foo/bar/plugin_name"
-//      # optional arguments to supply to this plugin
-//      params: ["frobnitz=off"]
+//	# other keys indicate plugin names and their config
+//	plugin_name:
+//	  # optional path to where plugin file resides - can be path to
+//	  # plugin itself or directory that contains plugin
+//	  location: "/foo/bar/plugin_name"
+//	  # optional arguments to supply to this plugin
+//	  params: ["frobnitz=off"]
 //
-//    # other keys can use full name of plugins that follow protoc convention
-//    # (but don't have to: "foobar" could also be used for this one):
-//    protoc-gen-foobar: {} # empty config is fine
+//	# other keys can use full name of plugins that follow protoc convention
+//	# (but don't have to: "foobar" could also be used for this one):
+//	protoc-gen-foobar: {} # empty config is fine
 //
-// Go Plugins
+// # Go Plugins
 //
 // The protoc-gen-gox program can load Go plugins and execute them (instead of
 // forking them as separate executables). If a given protoc plugin binary is
@@ -74,7 +74,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"plugin"
@@ -218,7 +217,7 @@ func getConfig(args []string) (*effectiveConfig, error) {
 
 	var conf goxConfig
 	if configFile != "" {
-		b, err := ioutil.ReadFile(configFile)
+		b, err := os.ReadFile(configFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load config %s: %v", configFile, err)
 		}

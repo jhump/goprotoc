@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
@@ -141,7 +140,7 @@ func RunPlugin(name string, plugin Plugin, in io.Reader, out io.Writer) error {
 		return err
 	}
 
-	reqBytes, err := ioutil.ReadAll(in)
+	reqBytes, err := io.ReadAll(in)
 	if err != nil {
 		return finish(errResponse(name, fmt.Errorf("failed to read code gen request: %v", err)))
 	}
@@ -195,7 +194,7 @@ func runPlugin(name string, plugin Plugin, reqpb *pluginpb.CodeGeneratorRequest)
 		for i, r := range d {
 			readers[i] = r.contents
 		}
-		contents, err := ioutil.ReadAll(&readers)
+		contents, err := io.ReadAll(&readers)
 		if err != nil {
 			return errResponse(name, fmt.Errorf("failed to process code gen response: %v", err))
 		}

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -377,7 +376,7 @@ func driveProtocAsPlugin(req *plugins.CodeGenRequest, resp *plugins.CodeGenRespo
 		}
 	}
 
-	tmpDir, err := ioutil.TempDir("", "go-protoc")
+	tmpDir, err := os.MkdirTemp("", "go-protoc")
 	if err != nil {
 		return err
 	}
@@ -397,7 +396,7 @@ func driveProtocAsPlugin(req *plugins.CodeGenRequest, resp *plugins.CodeGenRespo
 	descFile := filepath.Join(tmpDir, "descriptors")
 	if fdsBytes, err := proto.Marshal(fds); err != nil {
 		return err
-	} else if err := ioutil.WriteFile(descFile, fdsBytes, 0666); err != nil {
+	} else if err := os.WriteFile(descFile, fdsBytes, 0666); err != nil {
 		return err
 	}
 
@@ -472,7 +471,7 @@ func applyInsertions(fileName string, contents io.Reader, insertions map[string]
 		data = b.Bytes()
 	} else {
 		var err error
-		data, err = ioutil.ReadAll(contents)
+		data, err = io.ReadAll(contents)
 		if err != nil {
 			return nil, err
 		}
@@ -533,7 +532,7 @@ func applyInsertions(fileName string, contents io.Reader, insertions map[string]
 			} else {
 				// if there's an indent, break up the inserted data
 				// into lines and prefix each line with the indent
-				insData, err := ioutil.ReadAll(ins.data)
+				insData, err := io.ReadAll(ins.data)
 				if err != nil {
 					return nil, err
 				}

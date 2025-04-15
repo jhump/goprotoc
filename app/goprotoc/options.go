@@ -3,7 +3,7 @@ package goprotoc
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -182,7 +182,7 @@ func parseFlags(source string, programName string, args []string, stdout io.Writ
 					return err
 				}
 				source := a[1:]
-				contents, err := ioutil.ReadFile(source)
+				contents, err := os.ReadFile(source)
 				if err != nil {
 					return fmt.Errorf("%scould not load option file %s: %v", loc(), source, err)
 				}
