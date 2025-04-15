@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 
 	"github.com/jhump/protoreflect/desc"
@@ -30,7 +29,7 @@ func doEncode(encodeType string, fds []*desc.FileDescriptor, r io.Reader, w io.W
 	}
 	dm := dynamic.NewMessageWithExtensionRegistry(md, &er)
 
-	b, err := ioutil.ReadAll(r)
+	b, err := io.ReadAll(r)
 	if err != nil {
 		return fmt.Errorf("failed to read input: %v", err)
 	}
@@ -66,7 +65,7 @@ func doDecode(decodeType string, fds []*desc.FileDescriptor, r io.Reader, w io.W
 	}
 	dm := dynamic.NewMessageWithExtensionRegistry(md, &er)
 
-	b, err := ioutil.ReadAll(r)
+	b, err := io.ReadAll(r)
 	if err != nil {
 		return fmt.Errorf("failed to read input: %v", err)
 	}
@@ -85,7 +84,7 @@ func doDecode(decodeType string, fds []*desc.FileDescriptor, r io.Reader, w io.W
 }
 
 func doDecodeRaw(r io.Reader, w io.Writer) error {
-	data, err := ioutil.ReadAll(r)
+	data, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}

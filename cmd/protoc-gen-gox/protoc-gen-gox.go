@@ -74,7 +74,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"plugin"
@@ -218,7 +217,7 @@ func getConfig(args []string) (*effectiveConfig, error) {
 
 	var conf goxConfig
 	if configFile != "" {
-		b, err := ioutil.ReadFile(configFile)
+		b, err := os.ReadFile(configFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load config %s: %v", configFile, err)
 		}

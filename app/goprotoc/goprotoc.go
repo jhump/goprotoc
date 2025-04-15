@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 
@@ -235,7 +234,7 @@ Parse PROTO_FILES and generate output based on the options given:
 func loadDescriptors(descFileNames []string, inputProtoFiles []string) ([]*desc.FileDescriptor, error) {
 	allFiles := map[string]*descriptorpb.FileDescriptorProto{}
 	for _, fileName := range descFileNames {
-		d, err := ioutil.ReadFile(fileName)
+		d, err := os.ReadFile(fileName)
 		if err != nil {
 			return nil, err
 		}
@@ -318,7 +317,7 @@ func saveDescriptor(dest string, fds []*desc.FileDescriptor, includeImports, inc
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(dest, b, 0666)
+	return os.WriteFile(dest, b, 0666)
 }
 
 func toFileDescriptorSet(alreadySeen, fileNames map[string]struct{}, fdSet *descriptorpb.FileDescriptorSet, fd *desc.FileDescriptor, includeImports, includeSourceInfo bool) {
