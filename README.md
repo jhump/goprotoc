@@ -1,5 +1,5 @@
 # Go-protoc
-[![Build Status](https://circleci.com/gh/jhump/goprotoc/tree/master.svg?style=svg)](https://circleci.com/gh/jhump/goprotoc/tree/master)
+[![Build Status](https://github.com/jhump/goprotoc/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/jhump/goprotoc/actions/workflows/ci.yaml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/jhump/goprotoc)](https://goreportcard.com/report/github.com/jhump/goprotoc)
 [![GoDoc](https://godoc.org/github.com/jhump/goprotoc/plugins?status.svg)](https://godoc.org/github.com/jhump/goprotoc/plugins)
 
