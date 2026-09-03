@@ -22,6 +22,35 @@ code. And it can invoke any other plugins (such as `protoc-gen-go`) the same way
 In addition to the `goprotoc` command, this repo provides a package that other Go programs can use as the
 entry-point to running Protocol Buffer code gen, without having to shell out to an external program.
 
+### Versioning plugins in `go.mod`
+
+Both `goprotoc` and the plugins it drives can be pinned in the `go.mod` of the project whose code is
+being generated, so that everyone building the project uses the same versions and nothing has to be
+installed out of band:
+
+```sh
+go get -tool github.com/jhump/goprotoc/cmd/goprotoc
+go get -tool google.golang.org/protobuf/cmd/protoc-gen-go
+```
+
+`goprotoc` reads the `tool` directives that `go get -tool` writes. A plugin declared there as
+`protoc-gen-<name>` is run via `go tool`, so `--<name>_out` works with no further configuration:
+
+```sh
+go tool goprotoc --go_out=. foo.proto
+```
+
+A plugin whose package is not named `protoc-gen-<name>` can be named explicitly, using a `gotool:`
+location instead of a path:
+
+```sh
+go tool goprotoc --plugin=protoc-gen-foo=gotool:example.com/cmd/mygen --foo_out=. foo.proto
+```
+
+The version always comes from `go.mod`, so a `gotool:` location must not carry an `@version`
+suffix. This requires Go 1.24 or later in the project being generated; plugin executables found on
+the `PATH` continue to work as before, and take precedence when configured with `--plugin`.
+
 ## Extras
 You'll also find a `protoc` plugin named `protoc-gen-gox` that can be the entry point for generating Go code. It
 will delegate to `protoc-gen-go` for standard code gen and gRPC code gen, but it can also be configured to execute

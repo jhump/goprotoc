@@ -199,6 +199,13 @@ Parse PROTO_FILES and generate output based on the options given:
                               NAME=PATH, in which case the given plugin name
                               is mapped to the given executable even if
                               the executable's own name differs.
+                              In place of PATH, a location of the form
+                              'gotool:PACKAGE' names a Go package that is run
+                              via 'go tool PACKAGE'. The package must be
+                              declared with a 'tool' directive in the go.mod
+                              of the module being generated (see 'go get
+                              -tool'), which is how its version is pinned. No
+                              version may be given in PACKAGE itself.
   --<PLUGIN>_out=OUT_DIR      Invokes the plugin named <PLUGIN>, instructing
                               it to generate source code into the given
                               OUT_DIR. The given OUT_DIR can be in the
@@ -215,6 +222,11 @@ Parse PROTO_FILES and generate output based on the options given:
                               'ruby' then the protoc binary is used to
                               generate the output code (instead of some
                               plugin).
+                              Failing all of the above, the go.mod of the
+                              module being generated is consulted: if it
+                              declares a tool named 'protoc-gen-<PLUGIN>',
+                              that tool is run via 'go tool'. Only then is
+                              the PATH searched.
   @<filename>                 Read options and filenames from file. If a
                               relative file path is specified, the file
                               will be searched in the working directory.

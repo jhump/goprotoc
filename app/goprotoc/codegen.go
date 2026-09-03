@@ -70,7 +70,7 @@ func (f outputFile) String() string {
 	return fmt.Sprintf("%s:%s", f.loc.path, f.fileName)
 }
 
-func doCodeGen(outputs map[string]string, fds []*desc.FileDescriptor, pluginDefs map[string]string) error {
+func doCodeGen(outputs map[string]string, fds []*desc.FileDescriptor, pluginDefs map[string]pluginDef) error {
 	locations, args, err := computeOutputLocations(outputs)
 	if err != nil {
 		return err
@@ -171,18 +171,18 @@ func computeOutputLocations(outputs map[string]string) (map[string]outputLocatio
 	return locations, args, nil
 }
 
-func runPlugins(args map[string]string, fds []*desc.FileDescriptor, pluginDefs map[string]string) (map[string]*plugins.CodeGenResponse, error) {
+func runPlugins(args map[string]string, fds []*desc.FileDescriptor, pluginDefs map[string]pluginDef) (map[string]*plugins.CodeGenResponse, error) {
 	req := plugins.CodeGenRequest{
 		Files:         fds,
 		ProtocVersion: protocVersionStruct,
 	}
 	resps := map[string]*plugins.CodeGenResponse{}
+	resolver := pluginResolver{defs: pluginDefs}
 
 	for lang, arg := range args {
 		resp := plugins.NewCodeGenResponse(lang, nil)
 		resps[lang] = resp
-		pluginName := pluginDefs[lang]
-		if err := executePlugin(&req, resp, pluginName, lang, arg); err != nil {
+		if err := resolver.executePlugin(&req, resp, lang, arg); err != nil {
 			return nil, err
 		}
 	}
@@ -350,23 +350,91 @@ func RegisterPlugin(lang string, plugin plugins.Plugin) {
 
 var inprocessPlugins = map[string]plugins.Plugin{}
 
-func executePlugin(req *plugins.CodeGenRequest, resp *plugins.CodeGenResponse, pluginName, lang, outputArg string) error {
+// pluginResolver decides which plugin generates each requested output language.
+type pluginResolver struct {
+	// defs are the plugins configured with --plugin flags, keyed by language.
+	defs map[string]pluginDef
+	// goTools resolves plugins declared as tools in the go.mod of the module
+	// being generated.
+	goTools goToolResolver
+}
+
+func (r *pluginResolver) executePlugin(req *plugins.CodeGenRequest, resp *plugins.CodeGenResponse, lang, outputArg string) error {
 	if len(outputArg) > 0 {
 		req.Args = strings.Split(outputArg, ",")
 	}
-	if pluginName == "" {
-		// no configured plugin path, so first check if we have an in-process plugin
-		if p, ok := inprocessPlugins[lang]; ok {
-			return p(req, resp)
-		}
-		// maybe it's an output provided by protoc
-		if _, ok := protocOutputs[lang]; ok {
-			return driveProtocAsPlugin(req, resp, lang)
-		}
-		// otherwise, assume plugin program name by convention
-		pluginName = "protoc-gen-" + lang
+	plugin, err := r.resolve(context.Background(), lang)
+	if err != nil {
+		return err
 	}
-	return plugins.Exec(context.Background(), pluginName, req, resp)
+	return plugin(req, resp)
+}
+
+// resolve returns the plugin that generates the given output language. The
+// sources of plugins are consulted in order of decreasing specificity: an
+// explicit --plugin flag, a plugin linked into this program, protoc itself, a
+// tool declared in the go.mod of the module being generated, and finally the
+// PATH.
+func (r *pluginResolver) resolve(ctx context.Context, lang string) (plugins.Plugin, error) {
+	if def, ok := r.defs[lang]; ok {
+		if def.kind == pluginKindGoTool {
+			return r.goToolPlugin(ctx, lang, def.loc)
+		}
+		return execPlugin(ctx, plugins.PluginCommand{Name: lang, Path: def.loc}), nil
+	}
+	if p, ok := inprocessPlugins[lang]; ok {
+		return p, nil
+	}
+	if _, ok := protocOutputs[lang]; ok {
+		return func(req *plugins.CodeGenRequest, resp *plugins.CodeGenResponse) error {
+			return driveProtocAsPlugin(req, resp, lang)
+		}, nil
+	}
+	tools, toolsErr := r.goTools.toolDirectives()
+	if toolsErr == nil {
+		if pkg, ok := tools.plugins[lang]; ok {
+			return r.goToolPlugin(ctx, lang, pkg)
+		}
+	}
+	exeName := pluginExeName(lang)
+	exePath, err := exec.LookPath(exeName)
+	if err != nil {
+		var reason string
+		if toolsErr != nil {
+			reason = fmt.Sprintf(" (%v)", toolsErr)
+		}
+		return nil, fmt.Errorf("no plugin found for %s output: %v, and no %q tool directive was found in go.mod%s",
+			lang, err, exeName, reason)
+	}
+	return execPlugin(ctx, plugins.PluginCommand{Name: lang, Path: exePath}), nil
+}
+
+// goToolPlugin returns a plugin that runs the given Go package via "go tool",
+// which resolves it against the tool directives in the go.mod of the module
+// being generated.
+func (r *pluginResolver) goToolPlugin(ctx context.Context, lang, pkg string) (plugins.Plugin, error) {
+	goBin, err := r.goTools.goBinary()
+	if err != nil {
+		return nil, fmt.Errorf("cannot run plugin %q from package %s: %v", lang, pkg, err)
+	}
+	cmd := plugins.PluginCommand{Name: lang, Path: goBin, Args: []string{"tool", pkg}}
+	return func(req *plugins.CodeGenRequest, resp *plugins.CodeGenResponse) error {
+		err := plugins.ExecCommand(ctx, cmd, req, resp)
+		// A package that go.mod does not declare as a tool is the likeliest
+		// reason for a failure, and the go command reports it without saying
+		// how to fix it.
+		if err != nil && !r.goTools.declaresTool(pkg) {
+			return fmt.Errorf("plugin %q: package %s is not declared as a tool in go.mod; add it with 'go get -tool %s' (requires Go 1.24 or later)", lang, pkg, pkg)
+		}
+		return err
+	}, nil
+}
+
+// execPlugin returns a plugin that runs the given command as a sub-process.
+func execPlugin(ctx context.Context, cmd plugins.PluginCommand) plugins.Plugin {
+	return func(req *plugins.CodeGenRequest, resp *plugins.CodeGenResponse) error {
+		return plugins.ExecCommand(ctx, cmd, req, resp)
+	}
 }
 
 func driveProtocAsPlugin(req *plugins.CodeGenRequest, resp *plugins.CodeGenResponse, lang string) (err error) {
