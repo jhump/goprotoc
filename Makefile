@@ -5,7 +5,7 @@ ci: deps checkgofmt errcheck golint vet ineffassign staticcheck test
 
 .PHONY: deps
 deps:
-	go get -d -v -t ./...
+	go mod download
 
 .PHONY: updatedeps
 updatedeps:
@@ -38,7 +38,7 @@ vet:
 
 .PHONY: staticcheck
 staticcheck:
-	@go install honnef.co/go/tools/cmd/staticcheck@v0.4.6
+	@go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
 	staticcheck ./...
 
 .PHONY: ineffassign
@@ -53,7 +53,7 @@ golint:
 
 .PHONY: errcheck
 errcheck:
-	@go install github.com/kisielk/errcheck@v1.6.3
+	@go install github.com/kisielk/errcheck@v1.20.0
 	errcheck ./...
 
 .PHONY: test

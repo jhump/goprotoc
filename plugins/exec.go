@@ -16,9 +16,40 @@ import (
 	"google.golang.org/protobuf/types/pluginpb"
 )
 
+// PluginCommand describes how to invoke a protoc plugin as a sub-process. The
+// plugin protocol is spoken over the process's stdin and stdout, so Args are
+// only the arguments needed to get the plugin running (for example, the "tool"
+// and package path arguments needed to run a plugin via "go tool").
+type PluginCommand struct {
+	// Name is how the plugin is identified in error messages and in the
+	// attribution of generated content. If empty, it is derived from Path by
+	// removing any directory and the conventional "protoc-gen-" prefix.
+	Name string
+	// Path is the executable to run. If it contains no path separators, it is
+	// looked up in the PATH environment variable.
+	Path string
+	// Args are the arguments passed to Path.
+	Args []string
+}
+
+func (c PluginCommand) name() string {
+	if c.Name != "" {
+		return c.Name
+	}
+	return pluginName(path.Base(c.Path))
+}
+
 // Exec executes the protoc plugin at the given path, sending it the given
 // request and adding its generated code output to the given response.
 func Exec(ctx context.Context, pluginPath string, req *CodeGenRequest, resp *CodeGenResponse) error {
+	return ExecCommand(ctx, PluginCommand{Path: pluginPath}, req, resp)
+}
+
+// ExecCommand executes the given command as a protoc plugin, sending it the
+// given request and adding its generated code output to the given response.
+// Unlike Exec, it can run a plugin that requires arguments, such as one invoked
+// via "go tool".
+func ExecCommand(ctx context.Context, cmd PluginCommand, req *CodeGenRequest, resp *CodeGenResponse) error {
 	if len(req.Files) == 0 {
 		return fmt.Errorf("nothing to generate: no files given")
 	}
@@ -32,13 +63,13 @@ func Exec(ctx context.Context, pluginPath string, req *CodeGenRequest, resp *Cod
 		return fmt.Errorf("failed to marshal code gen request to bytes: %v", err)
 	}
 
-	pluginName := pluginName(path.Base(pluginPath))
+	pluginName := cmd.name()
 
-	cmd := exec.CommandContext(ctx, pluginPath)
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = bytes.NewReader(reqBytes)
+	proc := exec.CommandContext(ctx, cmd.Path, cmd.Args...)
+	proc.Stderr = os.Stderr
+	proc.Stdin = bytes.NewReader(reqBytes)
 
-	respBytes, err := cmd.Output()
+	respBytes, err := proc.Output()
 	if err != nil {
 		return fmt.Errorf("executing plugin %q failed: %v", pluginName, err)
 	}
